@@ -1,0 +1,196 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --card: #ffffff;
+  --ring: #00a33d;
+  --input: #d3e0ea;
+  --muted: #e0edf8;
+  --accent: #28bc5e;
+  --border: #d3e0ea;
+  --radius: 0.75rem;
+  --chart-1: #00a33d;
+  --chart-2: #0083e0;
+  --chart-3: #f46800;
+  --chart-4: #a264f6;
+  --chart-5: #f83e54;
+  --popover: #ffffff;
+  --primary: #00a33d;
+  --sidebar: #f3faff;
+  --spacing: 0.25rem;
+  --font-mono: Space Mono, ui-monospace, monospace;
+  --font-sans: Space Grotesk, ui-sans-serif, sans-serif, system-ui;
+  --secondary: #e0edf8;
+  --background: #f3faff;
+  --font-serif: PT Serif, ui-serif, serif;
+  --foreground: #09131a;
+  --destructive: #f22a36;
+  --shadow-blur: 3px;
+  --shadow-color: oklch(0 0 0);
+  --sidebar-ring: #00a33d;
+  --shadow-spread: 0px;
+  --letter-spacing: 0em;
+  --shadow-opacity: 0.1;
+  --sidebar-accent: #28bc5e;
+  --sidebar-border: #d3e0ea;
+  --card-foreground: #09131a;
+  --shadow-offset-x: 0;
+  --shadow-offset-y: 1px;
+  --sidebar-primary: #00a33d;
+  --muted-foreground: #4c575f;
+  --accent-foreground: #f3faff;
+  --popover-foreground: #09131a;
+  --primary-foreground: #f3faff;
+  --sidebar-foreground: #09131a;
+  --secondary-foreground: #202a32;
+  --destructive-foreground: #f3faff;
+  --sidebar-accent-foreground: #f3faff;
+  --sidebar-primary-foreground: #f3faff;
+}
+
+.dark {
+  --card: #09131a;
+  --ring: #2fbc5b;
+  --input: #202a32;
+  --muted: #172128;
+  --accent: #32c364;
+  --border: #202a32;
+  --radius: 0.625rem;
+  --chart-1: #2fbc5b;
+  --chart-2: #319cfc;
+  --chart-3: #ff7f16;
+  --chart-4: #b478ff;
+  --chart-5: #ff5969;
+  --popover: #09131a;
+  --primary: #2fbc5b;
+  --sidebar: oklch(0.205 0 0);
+  --spacing: 0.25rem;
+  --font-mono: Space Mono, ui-monospace, monospace;
+  --font-sans: Space Grotesk, ui-sans-serif, sans-serif, system-ui;
+  --secondary: #172128;
+  --background: #02080e;
+  --font-serif: PT Serif, ui-serif, serif;
+  --foreground: #e9f0f5;
+  --destructive: #f22a36;
+  --shadow-blur: 3px;
+  --shadow-color: oklch(0 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+  --shadow-spread: 0px;
+  --letter-spacing: 0em;
+  --shadow-opacity: 0.1;
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-border: oklch(0.275 0 0);
+  --card-foreground: #e9f0f5;
+  --shadow-offset-x: 0;
+  --shadow-offset-y: 1px;
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --muted-foreground: #85919a;
+  --accent-foreground: #000408;
+  --popover-foreground: #e9f0f5;
+  --primary-foreground: #000408;
+  --sidebar-foreground: oklch(0.985 0 0);
+  --secondary-foreground: #e9f0f5;
+  --destructive-foreground: #f3faff;
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+}
+
+@theme {
+  --font-sans: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "Space Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "PT Serif", ui-serif, serif;
+}
+
+@theme inline {
+  --color-card: var(--card);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-radius: var(--radius);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-popover: var(--popover);
+  --color-primary: var(--primary);
+  --color-sidebar: var(--sidebar);
+  --color-spacing: var(--spacing);
+  --color-font-mono: var(--font-mono);
+  --color-font-sans: var(--font-sans);
+  --color-secondary: var(--secondary);
+  --color-background: var(--background);
+  --color-font-serif: var(--font-serif);
+  --color-foreground: var(--foreground);
+  --color-destructive: var(--destructive);
+  --color-shadow-blur: var(--shadow-blur);
+  --color-shadow-color: var(--shadow-color);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-shadow-spread: var(--shadow-spread);
+  --color-letter-spacing: var(--letter-spacing);
+  --color-shadow-opacity: var(--shadow-opacity);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-card-foreground: var(--card-foreground);
+  --color-shadow-offset-x: var(--shadow-offset-x);
+  --color-shadow-offset-y: var(--shadow-offset-y);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-area, #printable-area * {
+    visibility: visible;
+  }
+  #printable-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    margin: 0;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    color: black !important;
+  }
+  .print-hide {
+    display: none !important;
+  }
+}
+
+/* Sembunyikan tombol mata bawaan browser agar tidak ganda */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+}
+
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  display: none !important;
+  pointer-events: none;
+}
+
+/* Custom styling for leakage-free sticky tables using border-separate */
+.table-sticky-leakproof td {
+  border-bottom: 1px solid #f1f5f9; /* matches slate-100 */
+}
+.table-sticky-leakproof th {
+  border-bottom: 2px solid #e2e8f0; /* matches slate-200 */
+}
+
