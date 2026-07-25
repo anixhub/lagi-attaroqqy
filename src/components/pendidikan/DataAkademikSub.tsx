@@ -2340,7 +2340,9 @@ export default function DataAkademikSub({
               let newInternal = transferStudent.pendidikanInternal;
               
               if (isFormalTarget) {
-                newFormal = destClassObj.nama !== 'Calon Peserta Didik' ? `${targetLemObj?.nama || ''} - ${destClassObj.nama}` : `${targetLemObj?.nama || ''}`;
+                newFormal = destClassObj.nama !== 'Calon Peserta Didik' 
+                  ? `${targetLemObj?.nama || ''} - ${destClassObj.nama}` 
+                  : `${targetLemObj?.nama || ''} - Calon Peserta Didik`;
               } else {
                 newInternal = destClassObj.nama !== 'Calon Peserta Didik' ? `${targetLemObj?.nama || ''} - ${destClassObj.nama}` : `${targetLemObj?.nama || ''}`;
               }

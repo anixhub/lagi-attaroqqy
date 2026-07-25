@@ -728,20 +728,24 @@ export default function SantriFormModal({
   // Dynamic NIS auto-generation based on entryYear and registration order
   useEffect(() => {
     if (isOpen && !editingSantri) {
-      const entryYear = form.tanggalMasuk ? form.tanggalMasuk.split('-')[0] : new Date().getFullYear().toString();
+      if (!form.tanggalMasuk || form.tanggalMasuk.trim() === '') {
+        // If tanggalMasuk is empty, do not auto-generate NIS yet
+        return;
+      }
+      const entryYear = form.tanggalMasuk.split('-')[0];
       const prefix = entryYear; // 4 digits year, e.g. '2026'
       
       const sameYearSantris = (santriList || []).filter(s => {
         const sYear = s.tanggalMasuk ? s.tanggalMasuk.split('-')[0] : '';
         if (sYear === entryYear) return true;
-        if (s.nis && s.nis.startsWith(prefix) && s.nis.length === 7) return true;
+        if (s.nis && String(s.nis).startsWith(prefix) && String(s.nis).length === 7) return true;
         return false;
       });
 
       const sequences = sameYearSantris
         .map(s => {
-          if (s.nis && s.nis.startsWith(prefix) && s.nis.length === 7) {
-            const seqPart = s.nis.slice(4);
+          if (s.nis && String(s.nis).startsWith(prefix) && String(s.nis).length === 7) {
+            const seqPart = String(s.nis).slice(4);
             const parsed = parseInt(seqPart, 10);
             return isNaN(parsed) ? 0 : parsed;
           }

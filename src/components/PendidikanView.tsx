@@ -909,7 +909,9 @@ export default function PendidikanView({
         newFormal = '';
       }
     } else if (isTargetFormal && targetLembagaObj) {
-      newFormal = (classText !== 'Calon Peserta Didik' && classText !== 'Calon Pelajar') ? `${targetLembagaObj.nama} - ${classText}` : '';
+      newFormal = (classText !== 'Calon Peserta Didik' && classText !== 'Calon Pelajar') 
+        ? `${targetLembagaObj.nama} - ${classText}` 
+        : `${targetLembagaObj.nama} - Calon Peserta Didik`;
     }
     
     onUpdateSantri({
@@ -989,7 +991,9 @@ export default function PendidikanView({
             newBatchFormal = '';
           }
         } else if (isBatchFormal && targetLembaga) {
-          newBatchFormal = (targetClassName !== 'Calon Peserta Didik' && targetClassName !== 'Calon Pelajar') ? `${targetLembaga.nama} - ${targetClassName}` : '';
+          newBatchFormal = (targetClassName !== 'Calon Peserta Didik' && targetClassName !== 'Calon Pelajar') 
+            ? `${targetLembaga.nama} - ${targetClassName}` 
+            : `${targetLembaga.nama} - Calon Peserta Didik`;
         }
 
         return {

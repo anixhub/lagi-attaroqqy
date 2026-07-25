@@ -5,7 +5,7 @@ import {
   ArrowLeft, Search, GraduationCap, ArrowLeftRight, Check, CheckCircle2, 
   UserCheck, AlertCircle, X, MoreVertical, Award, ShieldAlert, UserMinus, ArrowRightLeft,
   Folder, FolderOpen, User, ArrowUpDown, Pencil, Settings, UserPlus, ArrowUp, ArrowDown,
-  ChevronDown, ChevronsUpDown, Printer
+  ChevronDown, ChevronsUpDown, Printer, Sparkles
 } from 'lucide-react';
 import { Lembaga, Kelas, Santri, KategoriRombel, KelompokRombel, RombelAssignment, isDefaultClass, isEmisTerdaftar, getClsLembagaId, isGenderMatch } from '../../types';
 import { demoteSantriToCalonPesertaDidik } from '../../lib/utils';
@@ -259,6 +259,7 @@ export default function LembagaKelasSub({
   
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [addMemberSearch, setAddMemberSearch] = useState('');
+  const [selectedModalStudentIds, setSelectedModalStudentIds] = useState<string[]>([]);
 
   // Toast Notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -454,6 +455,22 @@ export default function LembagaKelasSub({
     const targetNama = norm(l.nama);
     const targetKode = norm(l.kode);
 
+    const jenisLembaga = getLembagaJenis(l);
+
+    if (jenisLembaga === 'Formal') {
+      if (!s.pendidikanFormal || s.pendidikanFormal.trim() === '' || s.pendidikanFormal === 'TIDAK TERDAFTAR' || s.pendidikanFormal === 'Belum / Non-Formal') {
+        return false;
+      }
+      const formalParts = s.pendidikanFormal.split(',').map(x => norm(x)).filter(Boolean);
+      return formalParts.some(pf => 
+        pf === targetId ||
+        (targetNama && pf === targetNama) ||
+        (targetKode && pf === targetKode) ||
+        (targetNama && targetNama.length > 2 && (pf.includes(targetNama) || targetNama.includes(pf))) ||
+        (targetKode && targetKode.length > 2 && (pf.includes(targetKode) || targetKode.includes(pf)))
+      );
+    }
+
     // 1. Check s.pendidikanInternal
     if (s.pendidikanInternal) {
       const internalParts = s.pendidikanInternal.split(',').map(x => norm(x)).filter(Boolean);
@@ -480,7 +497,7 @@ export default function LembagaKelasSub({
       if (matchFormal) return true;
     }
 
-    // 3. Check if s.kelas matches any class defined for this lembaga in kelasList
+    // 3. Check if s.kelas matches any class defined for this internal lembaga in kelasList
     if (s.kelas) {
       const sClasses = s.kelas.split(',').map(x => norm(x)).filter(Boolean);
       const classesOfL = kelasList.filter(k => norm(getClsLembagaId(k)) === targetId);
@@ -1149,27 +1166,50 @@ export default function LembagaKelasSub({
   };
 
   const eligibleStudents = getEligibleStudentsForAdd();
-  const searchedEligibleStudents = eligibleStudents.filter(s => 
+
+  // Unselected eligible students (for left column)
+  const unselectedEligibleStudents = eligibleStudents.filter(
+    s => !selectedModalStudentIds.includes(s.id)
+  );
+
+  const searchedEligibleStudents = unselectedEligibleStudents.filter(s => 
     (s.nama || '').toLowerCase().includes(addMemberSearch.toLowerCase()) ||
     (s.nis && s.nis.toLowerCase().includes(addMemberSearch.toLowerCase()))
   );
 
-  const handleAddMember = (student: Santri) => {
-    if (!selectedKelas) return;
+  // Selected students in modal (for right column)
+  const selectedStudentsForModal = santriList.filter(s => 
+    selectedModalStudentIds.includes(s.id)
+  );
+
+  const handleConfirmAddMembers = () => {
+    if (!selectedKelas || selectedModalStudentIds.length === 0) return;
+
     if (activeTab === 'Rombel') {
       if (onAddAssignment) {
-        onAddAssignment({
-          id: 'RA-' + Date.now(),
-          santriId: student.id,
-          kelompokId: selectedKelas.id,
-          kategoriId: selectedLembaga.id
+        selectedModalStudentIds.forEach((id, idx) => {
+          onAddAssignment({
+            id: 'RA-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 6),
+            santriId: id,
+            kelompokId: selectedKelas.id,
+            kategoriId: selectedLembaga.id
+          });
         });
-        showToast(`${student.nama} ditambahkan ke kelompok.`);
       }
     } else {
-      onUpdateSantriClass(student.id, selectedKelas.nama, selectedLembaga.id);
-      showToast(`${student.nama} dimasukkan ke kelas ${selectedKelas.nama}.`);
+      if (onUpdateSantriClassBatch) {
+        onUpdateSantriClassBatch(selectedModalStudentIds, selectedKelas.nama, selectedLembaga.id);
+      } else {
+        selectedModalStudentIds.forEach(id => {
+          onUpdateSantriClass(id, selectedKelas.nama, selectedLembaga.id);
+        });
+      }
     }
+
+    showToast(`${selectedModalStudentIds.length} santri berhasil ditambahkan ke kelas ${selectedKelas.nama}.`);
+    setSelectedModalStudentIds([]);
+    setAddMemberSearch('');
+    setIsAddMemberModalOpen(false);
   };
 
   // Render Student table avatars safely
@@ -3240,81 +3280,212 @@ export default function LembagaKelasSub({
       {/* D. TAMBAH ANGGOTA / MULTI ADD MEMBER MODAL */}
       <AnimatePresence>
         {isAddMemberModalOpen && selectedKelas && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 animate-fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs animate-fade-in">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl border border-slate-100 shadow-xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]"
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="bg-white rounded-2xl border border-slate-200/80 shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[85vh]"
             >
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-                <div>
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">
-                    Tambah Anggota
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-medium mt-0.5">Memasukkan santri ke dalam {selectedKelas.nama}</p>
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100">
+                    <UserPlus className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Tambah Anggota Kelas
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium">{selectedLembaga.nama} &bull; <span className="text-emerald-700 font-semibold">{selectedKelas.nama}</span></p>
+                  </div>
                 </div>
-                <button onClick={() => setIsAddMemberModalOpen(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400">
+                <button 
+                  onClick={() => {
+                    setIsAddMemberModalOpen(false);
+                    setSelectedModalStudentIds([]);
+                  }} 
+                  className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Search Inside Add Member Modal */}
-              <div className="p-4 border-b border-slate-100 shrink-0 bg-white">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Cari nama santri eligible..."
-                    value={addMemberSearch}
-                    onChange={(e) => setAddMemberSearch(e.target.value)}
-                    className="w-full pl-9 pr-7 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/30 focus:border-emerald-500 focus:bg-white outline-none font-medium"
-                  />
-                  {addMemberSearch && (
-                    <button onClick={() => setAddMemberSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-455 hover:text-slate-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Scroll list of eligible candidates */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-[250px]">
-                {searchedEligibleStudents.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 text-xs italic">
-                    {addMemberSearch ? 'Tidak ada santri yang cocok.' : 'Semua santri yang eligible telah terdaftar di kelas/kelompok ini.'}
-                  </div>
-                ) : (
-                  searchedEligibleStudents.map(student => {
-                    return (
-                      <div key={student.id} className="p-2.5 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-100/50 flex items-center justify-between gap-3 text-xs transition-colors">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {renderStudentAvatar(student)}
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-800 truncate">{student.nama}</p>
-                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">NIS: {student.nis || '-'} | Kamar: {student.kamar || '-'}</p>
-                          </div>
-                        </div>
-
+              {/* Content: Split into 2 columns */}
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 min-h-[380px] max-h-[500px] overflow-hidden divide-y md:divide-y-0 md:divide-x divide-slate-100">
+                
+                {/* LEFT COLUMN: ELIGIBLE SANTRI */}
+                <div className="flex flex-col h-full overflow-hidden bg-white">
+                  {/* Left Header & Search */}
+                  <div className="p-3.5 border-b border-slate-100 space-y-2.5 bg-slate-50/30 shrink-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        Santri Tersedia
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">
+                          {unselectedEligibleStudents.length}
+                        </span>
+                      </span>
+                      {searchedEligibleStudents.length > 0 && (
                         <button
-                          onClick={() => handleAddMember(student)}
-                          className="px-2.5 py-1 bg-emerald-600 text-white font-extrabold text-[10px] rounded-lg shadow-xs hover:bg-emerald-700 shrink-0 cursor-pointer"
+                          type="button"
+                          onClick={() => {
+                            const newIds = Array.from(new Set([...selectedModalStudentIds, ...searchedEligibleStudents.map(s => s.id)]));
+                            setSelectedModalStudentIds(newIds);
+                          }}
+                          className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 cursor-pointer hover:underline"
                         >
-                          TAMBAH
+                          Pilih Semua ({searchedEligibleStudents.length})
                         </button>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama atau NIS..."
+                        value={addMemberSearch}
+                        onChange={(e) => setAddMemberSearch(e.target.value)}
+                        className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all font-medium"
+                      />
+                      {addMemberSearch && (
+                        <button 
+                          type="button"
+                          onClick={() => setAddMemberSearch('')} 
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Left Scroll List */}
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                    {searchedEligibleStudents.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center py-12 text-center text-slate-400 text-xs">
+                        <User className="h-8 w-8 text-slate-300 mb-2 stroke-[1.5]" />
+                        <p className="font-medium">{addMemberSearch ? 'Tidak ada santri yang cocok' : 'Tidak ada santri tersedia'}</p>
                       </div>
-                    );
-                  })
-                )}
+                    ) : (
+                      searchedEligibleStudents.map(student => (
+                        <div 
+                          key={student.id} 
+                          onClick={() => setSelectedModalStudentIds(prev => [...prev, student.id])}
+                          className="p-2.5 rounded-xl border border-slate-100 hover:border-emerald-200 bg-white hover:bg-emerald-50/30 flex items-center justify-between gap-3 text-xs transition-all cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {renderStudentAvatar(student)}
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-800 truncate group-hover:text-emerald-900">{student.nama}</p>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">NIS: {student.nis || '-'} | Kamar: {student.kamar || '-'}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedModalStudentIds(prev => [...prev, student.id]);
+                            }}
+                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors shrink-0 cursor-pointer"
+                            title="Pilih Santri"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: SELECTED SANTRI */}
+                <div className="flex flex-col h-full overflow-hidden bg-slate-50/40">
+                  {/* Right Header */}
+                  <div className="p-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      Santri Dipilih
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                        {selectedStudentsForModal.length}
+                      </span>
+                    </span>
+                    {selectedStudentsForModal.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedModalStudentIds([])}
+                        className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 cursor-pointer hover:underline"
+                      >
+                        Hapus Semua
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Right Scroll List */}
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+                    {selectedStudentsForModal.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center py-12 text-center text-slate-400 text-xs">
+                        <CheckCircle2 className="h-8 w-8 text-slate-200 mb-2 stroke-[1.5]" />
+                        <p className="font-medium">Belum ada santri dipilih</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Klik santri di sebelah kiri untuk menambahkan</p>
+                      </div>
+                    ) : (
+                      selectedStudentsForModal.map(student => (
+                        <div 
+                          key={student.id} 
+                          className="p-2.5 rounded-xl border border-emerald-100 bg-emerald-50/40 flex items-center justify-between gap-3 text-xs transition-all"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {renderStudentAvatar(student)}
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-800 truncate">{student.nama}</p>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">NIS: {student.nis || '-'} | Kamar: {student.kamar || '-'}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedModalStudentIds(prev => prev.filter(id => id !== student.id))}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 cursor-pointer"
+                            title="Batal Pilih"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
               </div>
 
-              <div className="p-4 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-end">
-                <button
-                  onClick={() => setIsAddMemberModalOpen(false)}
-                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-extrabold rounded-lg text-xs cursor-pointer shadow-sm"
-                >
-                  SELESAI
-                </button>
+              {/* Footer / Action */}
+              <div className="px-6 py-3.5 border-t border-slate-100 bg-white shrink-0 flex items-center justify-between gap-4">
+                <p className="text-xs text-slate-500 font-medium">
+                  {selectedStudentsForModal.length > 0 ? (
+                    <span><strong>{selectedStudentsForModal.length} santri</strong> dipilih untuk dimasukkan ke <strong className="text-emerald-700">{selectedKelas.nama}</strong></span>
+                  ) : (
+                    <span>Pilih santri dari daftar di sebelah kiri</span>
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddMemberModalOpen(false);
+                      setSelectedModalStudentIds([]);
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAddMembers}
+                    disabled={selectedStudentsForModal.length === 0}
+                    className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:hover:bg-emerald-600 shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="h-4 w-4" />
+                    <span>Konfirmasi Penambahan ({selectedStudentsForModal.length})</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
