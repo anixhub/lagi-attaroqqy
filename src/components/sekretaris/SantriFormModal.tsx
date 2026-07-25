@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, ChevronLeft, ChevronRight, Upload, Trash2, UserPlus, 
-  FileText, User, GraduationCap, CheckCircle2, Eye, AlertTriangle, AlertCircle, Sparkles
+  FileText, User, GraduationCap, CheckCircle2, Eye, AlertTriangle, AlertCircle, Sparkles, RotateCcw
 } from 'lucide-react';
 import { Santri, Lembaga, Kelas, isDefaultClass } from '../../types';
 import { 
@@ -785,32 +785,32 @@ export default function SantriFormModal({
     }
   }, [editingSantri, lembagasList, kelasList]);
 
-  const generateNisForCurrentForm = () => {
-    // Jika sedang edit data santri yang sudah memiliki NIS tersimpan di database, kembalikan NIS sebelumnya
+  const restoreOriginalNis = () => {
     if (editingSantri && editingSantri.nis && String(editingSantri.nis).trim() !== "") {
       const origNis = formatBigDigit(editingSantri.nis);
       setForm(prev => ({ ...prev, nis: origNis }));
-      return;
     }
+  };
 
+  const generateNisForCurrentForm = () => {
     if (!form.tanggalMasuk || form.tanggalMasuk.trim() === "") return;
     
     const entryYear = form.tanggalMasuk.split('-')[0];
     const prefix = entryYear; // 4 digits year, e.g. '2026'
     
     const sameYearSantris = (santriList || []).filter(s => {
-      // Kecualikan santri yang sedang diedit dari pendaftaran
+      // Kecualikan santri yang sedang diedit agar nilainya tidak dihitung dalam urutan saat ini
       if (editingSantri && String(s.id) === String(editingSantri.id)) return false;
       const sYear = s.tanggalMasuk ? s.tanggalMasuk.split('-')[0] : '';
       if (sYear === entryYear) return true;
-      if (s.nis && s.nis.startsWith(prefix) && s.nis.length === 7) return true;
+      if (s.nis && String(s.nis).startsWith(prefix) && String(s.nis).length === 7) return true;
       return false;
     });
 
     const sequences = sameYearSantris
       .map(s => {
-        if (s.nis && s.nis.startsWith(prefix) && s.nis.length === 7) {
-          const seqPart = s.nis.slice(4);
+        if (s.nis && String(s.nis).startsWith(prefix) && String(s.nis).length === 7) {
+          const seqPart = String(s.nis).slice(4);
           const parsed = parseInt(seqPart, 10);
           return isNaN(parsed) ? 0 : parsed;
         }
@@ -1822,18 +1822,72 @@ export default function SantriFormModal({
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nomor Induk Santri (NIS)</label>
-                          <input
-                            type="text"
-                            id="nis-input"
-                            value={form.nis}
-                            onChange={(e) => handleNumericOnlyChange('nis', e.target.value, 7)}
-                            placeholder="Contoh: 2026001"
-                            className={`select-text w-full rounded-xl border p-3 text-sm focus:ring-1 outline-none font-mono ${
-                              validationErrors.nis 
-                                ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500 text-rose-900 bg-rose-50/10' 
-                                : 'border-slate-200 focus:border-emerald-500'
-                            }`}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              id="nis-input"
+                              value={form.nis}
+                              onChange={(e) => handleNumericOnlyChange('nis', e.target.value, 7)}
+                              placeholder="Contoh: 2026001"
+                              className={`select-text flex-1 min-w-0 rounded-xl border p-3 text-sm focus:ring-1 outline-none font-mono ${
+                                validationErrors.nis 
+                                  ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500 text-rose-900 bg-rose-50/10' 
+                                  : 'border-slate-200 focus:border-emerald-500'
+                              }`}
+                            />
+
+                            {/* Tombol Kembalikan (Icon Undo) */}
+                            {editingSantri && editingSantri.nis && String(editingSantri.nis).trim() !== "" && (
+                              <button
+                                type="button"
+                                onClick={restoreOriginalNis}
+                                disabled={form.nis === formatBigDigit(editingSantri.nis)}
+                                className={`p-3 rounded-xl border transition-all active:scale-95 shrink-0 ${
+                                  form.nis !== formatBigDigit(editingSantri.nis)
+                                    ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 cursor-pointer shadow-sm'
+                                    : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed opacity-50'
+                                }`}
+                                title={
+                                  form.nis !== formatBigDigit(editingSantri.nis)
+                                    ? `Kembalikan ke NIS database awal (${formatBigDigit(editingSantri.nis)})`
+                                    : `NIS saat ini sudah sesuai dengan database (${formatBigDigit(editingSantri.nis)})`
+                                }
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                            )}
+
+                            {/* Tombol Generate NIS */}
+                            {(() => {
+                              const isNisInputEmpty = !form.nis || form.nis.trim() === "";
+                              const isTanggalMasukValid = Boolean(form.tanggalMasuk && form.tanggalMasuk.trim() !== "");
+                              const canGenerateNis = isNisInputEmpty && isTanggalMasukValid;
+
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={generateNisForCurrentForm}
+                                  disabled={!canGenerateNis}
+                                  className={`px-3.5 py-3 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 shrink-0 shadow-sm ${
+                                    canGenerateNis
+                                      ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 cursor-pointer'
+                                      : 'bg-slate-50 text-slate-300 border border-slate-200 cursor-not-allowed opacity-50'
+                                  }`}
+                                  title={
+                                    !isTanggalMasukValid
+                                      ? "Silakan atur tanggal masuk terlebih dahulu"
+                                      : !isNisInputEmpty
+                                        ? "Kosongkan kolom NIS terlebih dahulu untuk men-generate NIS baru"
+                                        : "Generate NIS baru sesuai hitungan urutan santri saat ini"
+                                  }
+                                >
+                                  <Sparkles className={`h-4 w-4 ${canGenerateNis ? 'text-emerald-600' : 'text-slate-300'}`} />
+                                  <span>Generate</span>
+                                </button>
+                              );
+                            })()}
+                          </div>
+
                           {nisAdjustedNotification && (
                             <div className="mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2 flex items-start gap-1.5 font-sans font-medium animate-pulse">
                               <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-500 mt-0.5" />
@@ -1846,41 +1900,10 @@ export default function SantriFormModal({
                               <span>{validationErrors.nis}</span>
                             </p>
                           )}
-                          {(
-                            !form.nis || 
-                            form.nis.trim() === "" || 
-                            (editingSantri && editingSantri.nis && form.nis !== formatBigDigit(editingSantri.nis)) ||
-                            (!editingSantri && form.tanggalMasuk)
-                          ) && (
-                            <div className="mt-2 text-left">
-                              <button
-                                type="button"
-                                onClick={generateNisForCurrentForm}
-                                disabled={!editingSantri?.nis && (!form.tanggalMasuk || form.tanggalMasuk.trim() === "")}
-                                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${
-                                  (editingSantri?.nis && editingSantri.nis.trim() !== "") || (form.tanggalMasuk && form.tanggalMasuk.trim() !== "")
-                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                    : 'bg-slate-50 text-slate-400 border border-slate-200 cursor-not-allowed'
-                                }`}
-                                title={
-                                  editingSantri?.nis && editingSantri.nis.trim() !== ""
-                                    ? "Kembalikan ke NIS sebelumnya yang tersimpan di database"
-                                    : (!form.tanggalMasuk || form.tanggalMasuk.trim() === "")
-                                      ? "Silakan atur tanggal masuk terlebih dahulu"
-                                      : "Generate NIS otomatis"
-                                }
-                              >
-                                <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                                {editingSantri && editingSantri.nis && editingSantri.nis.trim() !== ""
-                                  ? "Kembalikan NIS Database"
-                                  : "Generate NIS"}
-                              </button>
-                              {!editingSantri?.nis && (!form.tanggalMasuk || form.tanggalMasuk.trim() === "") && (
-                                <p className="text-[10px] text-amber-600 font-medium mt-1">
-                                  *Harap atur tanggal masuk terlebih dahulu untuk men-generate NIS.
-                                </p>
-                              )}
-                            </div>
+                          {(!form.tanggalMasuk || form.tanggalMasuk.trim() === "") && (
+                            <p className="text-[10px] text-amber-600 font-medium mt-1">
+                              *Harap atur tanggal masuk terlebih dahulu untuk men-generate NIS.
+                            </p>
                           )}
                         </div>
 
