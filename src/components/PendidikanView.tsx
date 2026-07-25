@@ -896,16 +896,20 @@ export default function PendidikanView({
 
     const newInternal = activeInternalLembagaIds.length > 0 
       ? Array.from(new Set(activeInternalLembagaIds)).join(',') 
-      : undefined;
+      : '';
 
     const isTargetFormal = targetLembagaObj ? (
       targetLembagaObj.jenis === 'Formal' || 
       (!targetLembagaObj.jenis && !['madin','diniyah','tpq','tahfidz','pondok','kitab','internal'].some(k => (targetLembagaObj.nama || '').toLowerCase().includes(k)))
     ) : false;
 
-    let newFormal = target.pendidikanFormal;
-    if (isTargetFormal && targetLembagaObj) {
-      newFormal = (classText !== 'Tanpa Kelas' && classText !== 'Calon Peserta Didik' && classText !== 'Calon Pelajar') ? `${targetLembagaObj.nama} - ${classText}` : undefined;
+    let newFormal = target.pendidikanFormal || '';
+    if (classText === 'Tanpa Kelas') {
+      if (isTargetFormal || !lembagaId) {
+        newFormal = '';
+      }
+    } else if (isTargetFormal && targetLembagaObj) {
+      newFormal = (classText !== 'Calon Peserta Didik' && classText !== 'Calon Pelajar') ? `${targetLembagaObj.nama} - ${classText}` : '';
     }
     
     onUpdateSantri({
@@ -972,16 +976,20 @@ export default function PendidikanView({
 
         const newInternal = activeInternalLembagaIds.length > 0 
           ? Array.from(new Set(activeInternalLembagaIds)).join(',') 
-          : undefined;
+          : '';
 
         const isBatchFormal = targetLembaga ? (
           targetLembaga.jenis === 'Formal' || 
           (!targetLembaga.jenis && !['madin','diniyah','tpq','tahfidz','pondok','kitab','internal'].some(k => (targetLembaga.nama || '').toLowerCase().includes(k)))
         ) : false;
 
-        let newBatchFormal = s.pendidikanFormal;
-        if (isBatchFormal && targetLembaga) {
-          newBatchFormal = (targetClassName !== 'Tanpa Kelas' && targetClassName !== 'Calon Peserta Didik' && targetClassName !== 'Calon Pelajar') ? `${targetLembaga.nama} - ${targetClassName}` : undefined;
+        let newBatchFormal = s.pendidikanFormal || '';
+        if (targetClassName === 'Tanpa Kelas') {
+          if (isBatchFormal || !lembagaId) {
+            newBatchFormal = '';
+          }
+        } else if (isBatchFormal && targetLembaga) {
+          newBatchFormal = (targetClassName !== 'Calon Peserta Didik' && targetClassName !== 'Calon Pelajar') ? `${targetLembaga.nama} - ${targetClassName}` : '';
         }
 
         return {
@@ -1038,21 +1046,23 @@ export default function PendidikanView({
   };
 
   const handleRemoveAssignment = async (santriId: string, kelompokId: string) => {
+    const targets = assignmentsList.filter(a => a.santriId === santriId && a.kelompokId === kelompokId);
+
     // 1. Optimistic local update
     setAssignmentsList(prev => prev.filter(a => !(a.santriId === santriId && a.kelompokId === kelompokId)));
 
-    // 2. DB delete
-    const target = assignmentsList.find(a => a.santriId === santriId && a.kelompokId === kelompokId);
-    if (target && target.id && !target.id.startsWith('temp-')) {
-      try {
-        await deleteTableRow('rombel_assignment', 'smartsantri_rombel_assignments', target.id);
-      } catch (err) {
-        console.error("Error removing assignment:", err);
-        // Revert on failure
-        setAssignmentsList(prev => {
-          if (prev.some(a => a.santriId === santriId && a.kelompokId === kelompokId)) return prev;
-          return [...prev, target];
-        });
+    // 2. DB delete for all matches
+    for (const target of targets) {
+      if (target && target.id && !target.id.startsWith('temp-')) {
+        try {
+          await deleteTableRow('rombel_assignment', 'smartsantri_rombel_assignments', target.id);
+        } catch (err) {
+          console.error("Error removing assignment:", err);
+          setAssignmentsList(prev => {
+            if (prev.some(a => a.id === target.id)) return prev;
+            return [...prev, target];
+          });
+        }
       }
     }
   };

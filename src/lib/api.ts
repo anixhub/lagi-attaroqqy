@@ -1,5 +1,6 @@
 // Client-side Supabase Database API Helper & Sync Manager
 import { createClient } from "@supabase/supabase-js";
+import { formatBigDigit } from "./utils";
 
 export interface SupabaseStatus {
   connected: boolean;
@@ -188,7 +189,29 @@ export async function insertTableRow<T extends { id?: any }>(table: string, loca
         const result = await safeJsonParse(res);
         if (result.success && result.data) {
           const camelRemote = snakeToCamel(result.data);
-          remoteRow = { id: row.id, ...row, ...camelRemote } as T;
+          const remoteObj = Array.isArray(camelRemote) ? camelRemote[0] : camelRemote;
+          if (remoteObj && typeof remoteObj === 'object') {
+            const merged: any = { id: row.id, ...row };
+            const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
+            for (const k of Object.keys(remoteObj)) {
+              if (remoteObj[k] !== undefined && remoteObj[k] !== null && remoteObj[k] !== '') {
+                if (strFields.includes(k)) {
+                  const clientVal = formatBigDigit((row as any)[k]);
+                  const serverVal = formatBigDigit(remoteObj[k]);
+                  if (clientVal && clientVal !== '-' && clientVal.length > serverVal.length) {
+                    merged[k] = clientVal;
+                  } else if (!clientVal || clientVal === '-') {
+                    merged[k] = clientVal;
+                  } else {
+                    merged[k] = serverVal || clientVal;
+                  }
+                } else {
+                  merged[k] = typeof remoteObj[k] === 'number' ? String(remoteObj[k]) : remoteObj[k];
+                }
+              }
+            }
+            remoteRow = merged as T;
+          }
         }
       }
     }
@@ -277,13 +300,34 @@ export async function updateTableRow<T extends { id?: any }>(
           const camelRemote = snakeToCamel(result.data);
           const cleanedRemote: any = {};
           if (camelRemote && typeof camelRemote === 'object') {
+            const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
             for (const k of Object.keys(camelRemote)) {
               if (camelRemote[k] !== undefined) {
-                cleanedRemote[k] = camelRemote[k];
+                if (strFields.includes(k)) {
+                  const clientVal = formatBigDigit((updatedData as any)[k]);
+                  const serverVal = formatBigDigit(camelRemote[k]);
+                  if (clientVal && clientVal !== '-' && clientVal.length > serverVal.length) {
+                    cleanedRemote[k] = clientVal;
+                  } else if (!clientVal || clientVal === '-') {
+                    cleanedRemote[k] = clientVal;
+                  } else {
+                    cleanedRemote[k] = serverVal || clientVal;
+                  }
+                } else {
+                  cleanedRemote[k] = camelRemote[k];
+                }
               }
             }
           }
-          remoteRow = { id, ...cleanedRemote, ...updatedData } as T;
+          remoteRow = { id, ...updatedData, ...cleanedRemote } as T;
+          const identifierFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
+          for (const key of identifierFields) {
+            const clientVal = formatBigDigit((updatedData as any)[key]);
+            const serverVal = formatBigDigit((remoteRow as any)[key]);
+            if (clientVal && clientVal !== '-' && clientVal.length > serverVal.length) {
+              (remoteRow as any)[key] = clientVal;
+            }
+          }
         }
       }
     }

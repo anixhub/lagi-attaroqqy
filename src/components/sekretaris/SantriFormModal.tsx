@@ -13,6 +13,7 @@ import {
 import { BirthDatePicker } from './BirthDatePicker';
 import { SearchableSelect } from './SearchableSelect';
 import { uploadFileToStorage, fetchTableData } from '../../lib/api';
+import { formatBigDigit } from '../../lib/utils';
 
 const TEMPAT_LAHIR_OPTIONS = [
   "Aceh Barat", "Aceh Barat Daya", "Aceh Besar", "Aceh Jaya", "Aceh Selatan", "Aceh Singkil", "Aceh Tamiang", "Aceh Tengah", "Aceh Tenggara", "Aceh Timur", "Aceh Utara", "Agam", "Alor", "Asahan", "Asmat", "Badung", "Balangan", "Bandung", "Bandung Barat", "Banggai", "Banggai Kepulauan", "Banggai Laut", "Bangka", "Bangka Barat", "Bangka Selatan", "Bangka Tengah", "Bangkalan", "Bangli", "Banjar", "Banjarnegara", "Bantaeng", "Bantul", "Banyuasin", "Banyumas", "Banyuwangi", "Barito Kuala", "Barito Selatan", "Barito Timur", "Barito Utara", "Barru", "Batang", "Batanghari", "Batu Bara", "Bekasi", "Belitung", "Belitung Timur", "Belu", "Bener Meriah", "Bengkalis", "Bengkayang", "Bengkulu Selatan", "Bengkulu Tengah", "Bengkulu Utara", "Berau", "Biak Numfor", "Bima", "Bintan", "Bireuen", "Blitar", "Blora", "Boalemo", "Bogor", "Bojonegoro", "Bolaang Mongondow", "Bolaang Mongondow Selatan", "Bolaang Mongondow Timur", "Bolaang Mongondow Utara", "Bombana", "Bondowoso", "Bone", "Bone Bolango", "Boven Digoel", "Boyolali", "Brebes", "Buleleng", "Bulukumba", "Bulungan", "Bungo", "Buol", "Buru", "Buru Selatan", "Buton", "Buton Selatan", "Buton Tengah", "Buton Utara", "Ciamis", "Cianjur", "Cilacap", "Cirebon", "Dairi", "Deiyai", "Deli Serdang", "Demak", "Dharmasraya", "Dogiyai", "Dompu", "Donggala", "Empat Lawang", "Ende", "Enrekang", "Fakfak", "Flores Timur", "Garut", "Gayo Lues", "Gianyar", "Gorontalo", "Gorontalo Utara", "Gowa", "Gresik", "Grobogan", "Gunung Mas", "Gunungkidul", "Halmahera Barat", "Halmahera Selatan", "Halmahera Tengah", "Halmahera Timur", "Halmahera Utara", "Hulu Sungai Selatan", "Hulu Sungai Tengah", "Hulu Sungai Utara", "Humbang Hasundutan", "Indragiri Hilir", "Indragiri Hulu", "Indramayu", "Intan Jaya", "Jayapura", "Jayawijaya", "Jember", "Jembrana", "Jeneponto", "Jepara", "Jombang", "Kaimana", "Kampar", "Kapuas", "Kapuas Hulu", "Karanganyar", "Karangasem", "Karawang", "Karimun", "Karo", "Katingan", "Kaur", "Kayong Utara", "Kebumen", "Kediri", "Keerom", "Kendal", "Kepahiang", "Kepulauan Anambas", "Kepulauan Aru", "Kepulauan Mentawai", "Kepulauan Meranti", "Kepulauan Sangihe", "Kepulauan Selayar", "Kepulauan Seribu", "Kepulauan Siau Tagulandang Biaro", "Kepulauan Sula", "Kepulauan Talaud", "Kepulauan Tanimbar", "Kepulauan Yapen", "Kerinci", "Ketapang", "Klaten", "Klungkung", "Kolaka", "Kolaka Timur", "Kolaka Utara", "Konawe", "Konawe Kepulauan", "Konawe Selatan", "Konawe Utara", "Kotabaru", "Kotawaringin Barat", "Kotawaringin Timur", "Kuantan Singingi", "Kubu Raya", "Kudus", "Kulon Progo", "Kuningan", "Kupang", "Kutai Barat", "Kutai Kartanegara", "Kutai Timur", "Labuhanbatu", "Labuhanbatu Selatan", "Labuhanbatu Utara", "Lahat", "Lamandau", "Lamongan", "Lampung Barat", "Lampung Selatan", "Lampung Tengah", "Lampung Timur", "Lampung Utara", "Landak", "Langkat", "Lanny Jaya", "Lebak", "Lebong", "Lembata", "Lima Puluh Kota", "Lingga", "Lombok Barat", "Lombok Tengah", "Lombok Timur", "Lombok Utara", "Lumajang", "Luwu", "Luwu Timur", "Luwu Utara", "Madiun", "Magelang", "Magetan", "Mahakam Ulu", "Majalengka", "Majene", "Malaka", "Malang", "Malinau", "Maluku Barat Daya", "Maluku Tengah", "Maluku Tenggara", "Mamasa", "Mamberamo Raya", "Mamberamo Tengah", "Mamuju", "Mamuju Tengah", "Mamuju Utara", "Mandailing Natal", "Manggarai", "Manggarai Barat", "Manggarai Timur", "Manokwari", "Manokwari Selatan", "Mappi", "Maros", "Maybrat", "Melawi", "Mempawah", "Merangin", "Merauke", "Mesuji", "Mimika", "Minahasa", "Minahasa Selatan", "Minahasa Tenggara", "Minahasa Utara", "Mojokerto", "Morowali", "Morowali Utara", "Muara Enim", "Muaro Jambi", "Mukomuko", "Muna", "Muna Barat", "Murung Raya", "Musi Banyuasin", "Musi Rawas", "Musi Rawas Utara", "Nabire", "Nagan Raya", "Nagekeo", "Natuna", "Nduga", "Ngada", "Nganjuk", "Ngawi", "Nias", "Nias Barat", "Nias Selatan", "Nias Utara", "Nunukan", "Ogan Ilir", "Ogan Komering Ilir", "Ogan Komering Ulu", "Ogan Komering Ulu Selatan", "Ogan Komering Ulu Timur", "Pacitan", "Padang Lawas", "Padang Lawas Utara", "Padang Pariaman", "Pakpak Bharat", "Pamekasan", "Pandeglang", "Pangandaran", "Pangkajene dan Kepulauan", "Paniai", "Parigi Moutong", "Pasaman", "Pasaman Barat", "Paser", "Pasuruan", "Pati", "Pegunungan Arfak", "Pegunungan Bintang", "Pekalongan", "Pelalawan", "Pemalang", "Penajam Paser Utara", "Penukal Abab Lematang Ilir", "Pesawaran", "Pesisir Barat", "Pesisir Selatan", "Pidie", "Pidie Jaya", "Pinrang", "Pohuwato", "Polewali Mandar", "Ponorogo", "Poso", "Pringsewu", "Probolinggo", "Pulang Pisau", "Pulau Morotai", "Pulau Taliabu", "Puncak", "Puncak Jaya", "Purbalingga", "Purwakarta", "Purworejo", "Raja Ampat", "Rejang Lebong", "Rembang", "Rokan Hilir", "Rokan Hulu", "Rote Ndao", "Sabu Raijua", "Sambas", "Samosir", "Sampang", "Sanggau", "Sarmi", "Sarolangun", "Sekadau", "Seluma", "Semarang", "Seram Bagian Barat", "Seram Bagian Timur", "Serang", "Serdang Bedagai", "Seruyan", "Siak", "Sidenreng Rappang", "Sidoarjo", "Sigi", "Sijunjung", "Sikka", "Simalungun", "Simeulue", "Sinjai", "Sintang", "Situbondo", "Sleman", "Solok", "Solok Selatan", "Soppeng", "Sorong", "Sorong Selatan", "Sragen", "Subang", "Sukabumi", "Sukamara", "Sukoharjo", "Sumba Barat", "Sumba Barat Daya", "Sumba Tengah", "Sumba Timur", "Sumbawa", "Sumbawa Barat", "Sumedang", "Sumenep", "Tabalong", "Tabanan", "Takalar", "Tambrauw", "Tana Tidung", "Tana Toraja", "Tanah Bumbu", "Tanah Datar", "Tanah Laut", "Tangerang", "Tanggamus", "Tanjung Jabung Barat", "Tanjung Jabung Timur", "Tapanuli Selatan", "Tapanuli Tengah", "Tapanuli Utara", "Tapin", "Tasikmalaya", "Tebo", "Tegal", "Teluk Bintuni", "Teluk Wondama", "Temanggung", "Timor Tengah Selatan", "Timor Tengah Utara", "Toba", "Tojo Una-Una", "Tolikara", "Tolitoli", "Toraja Utara", "Trenggalek", "Tuban", "Tulang Bawang", "Tulang Bawang Barat", "Tulungagung", "Wajo", "Wakatobi", "Waropen", "Way Kanan", "Wonogiri", "Wonosobo", "Yahukimo", "Yalimo", "Ambon", "Balikpapan", "Banda Aceh", "Bandar Lampung", "Bandung", "Banjarbaru", "Banjarmasin", "Batam", "Batu", "Bau-Bau", "Bekasi", "Bengkulu", "Bima", "Binjai", "Bitung", "Blitar", "Bogor", "Bontang", "Bukittinggi", "Cilegon", "Cimahi", "Cirebon", "Denpasar", "Depok", "Dumai", "Gorontalo", "Gunungsitoli", "Jakarta Barat", "Jakarta Pusat", "Jakarta Selatan", "Jakarta Timur", "Jakarta Utara", "Jambi", "Jayapura", "Kediri", "Kendari", "Kotamobagu", "Kupang", "Langsa", "Lhokseumawe", "Lubuklinggau", "Madiun", "Magelang", "Makassar", "Malang", "Manado", "Mataram", "Medan", "Metro", "Mojokerto", "Padang", "Padang Panjang", "Padangsidimpuan", "Pagar Alam", "Palangka Raya", "Palembang", "Palopo", "Palu", "Pangkalpinang", "Parepare", "Pariaman", "Pasuruan", "Payakumbuh", "Pekalongan", "Pekanbaru", "Pematangsiantar", "Pontianak", "Prabumulih", "Probolinggo", "Sabang", "Salatiga", "Samarinda", "Sawahlunto", "Semarang", "Serang", "Sibolga", "Singkawang", "Solok", "Sorong", "Subulussalam", "Sukabumi", "Sungai Penuh", "Surabaya", "Surakarta", "Tangerang", "Tangerang Selatan", "Tanjungbalai", "Tanjungpinang", "Tarakan", "Tasikmalaya", "Tebing Tinggi", "Tegal", "Ternate", "Tidore Kepulauan", "Tomohon", "Tual", "Yogyakarta"
@@ -637,10 +638,10 @@ export default function SantriFormModal({
         setForm({
           nama: editingSantri.nama || '',
           nis: editingSantri.nis || '',
-          nisn: editingSantri.nisn || '',
-          nism: editingSantri.nism || '',
-          nik: editingSantri.nik || '',
-          noKk: editingSantri.noKk || '',
+          nisn: formatBigDigit(editingSantri.nisn),
+          nism: formatBigDigit(editingSantri.nism),
+          nik: formatBigDigit(editingSantri.nik),
+          noKk: formatBigDigit(editingSantri.noKk),
           tempatLahir: editingSantri.tempatLahir || '',
           tanggalLahir: editingSantri.tanggalLahir || '',
           gender: editingSantri.gender || 'Putra',
@@ -648,23 +649,23 @@ export default function SantriFormModal({
           dariBersaudara: String(editingSantri.dariBersaudara !== undefined ? editingSantri.dariBersaudara : 0),
           
           namaAyah: editingSantri.namaAyah || '',
-          nikAyah: editingSantri.nikAyah || '',
+          nikAyah: formatBigDigit(editingSantri.nikAyah),
           pekerjaanAyah: editingSantri.pekerjaanAyah || '',
           pendidikanAyah: editingSantri.pendidikanAyah || '',
           namaIbu: editingSantri.namaIbu || '',
-          nikIbu: editingSantri.nikIbu || '',
+          nikIbu: formatBigDigit(editingSantri.nikIbu),
           pekerjaanIbu: editingSantri.pekerjaanIbu || '',
           pendidikanIbu: editingSantri.pendidikanIbu || '',
 
           alamat: editingSantri.alamat || '',
-          rt: editingSantri.rt || '',
-          rw: editingSantri.rw || '',
+          rt: formatBigDigit(editingSantri.rt),
+          rw: formatBigDigit(editingSantri.rw),
           desa: des,
           kecamatan: kec,
           kabupaten: kab,
           provinsi: prov,
           jarakRumah: String(editingSantri.jarakRumah !== undefined ? editingSantri.jarakRumah : 0),
-          noHp: editingSantri.noHp || '',
+          noHp: formatBigDigit(editingSantri.noHp),
 
           statusKeanggotaan: editingSantri.statusKeanggotaan || 'Aktif',
           statusDomisili: editingSantri.statusDomisili || 'Muqim',

@@ -1,5 +1,26 @@
 import { Santri, Lembaga, Kelas } from '../types';
 
+export function formatBigDigit(val: any): string {
+  if (val === undefined || val === null || val === '') return '';
+  const str = String(val).trim();
+  if (str === '-') return '-';
+  if (typeof val === 'number') {
+    try {
+      return BigInt(Math.round(val)).toString();
+    } catch {
+      return str;
+    }
+  }
+  if (str.includes('e') || str.includes('E')) {
+    try {
+      return BigInt(Math.round(Number(str))).toString();
+    } catch {
+      return str;
+    }
+  }
+  return str;
+}
+
 export function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(" ");
 }
@@ -231,7 +252,7 @@ export function demoteSantriToCalonPesertaDidik(
     ...santri,
     statusEmis: 'Belum',
     kelas: finalKelasString,
-    pendidikanFormal: newFormal || undefined,
+    pendidikanFormal: newFormal || '',
   };
 }
 

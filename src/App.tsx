@@ -17,6 +17,7 @@ import KeamananView from './components/KeamananView';
 import PengaturanView from './components/PengaturanView';
 import LoginView from './components/LoginView';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { formatBigDigit } from './lib/utils';
 
 // Initial Mock Data
 import { 
@@ -128,6 +129,12 @@ export default function App() {
       if (s.kamar === 'Al-Ghazali 01' || s.kamar === 'Al Ghazali 01') {
         updated.kamar = 'Tanpa Kamar';
       }
+      if (s.nik !== undefined && s.nik !== null) updated.nik = formatBigDigit(s.nik);
+      if (s.nisn !== undefined && s.nisn !== null) updated.nisn = formatBigDigit(s.nisn);
+      if (s.noKk !== undefined && s.noKk !== null) updated.noKk = formatBigDigit(s.noKk);
+      if (s.nikAyah !== undefined && s.nikAyah !== null) updated.nikAyah = formatBigDigit(s.nikAyah);
+      if (s.nikIbu !== undefined && s.nikIbu !== null) updated.nikIbu = formatBigDigit(s.nikIbu);
+      if (s.noHp !== undefined && s.noHp !== null) updated.noHp = formatBigDigit(s.noHp);
       return updated;
     };
 
@@ -236,8 +243,19 @@ export default function App() {
               if (deletedSantriIds.current.has(newRow.id)) return;
               setSantriList(prev => {
                 if (deletedSantriIds.current.has(newRow.id)) return prev;
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
+                const existing = prev.find(item => item.id === newRow.id);
+                if (existing) {
+                  const mergedRow = {
+                    ...existing,
+                    ...newRow,
+                    nik: (newRow.nik && newRow.nik !== '-') ? String(newRow.nik) : existing.nik,
+                    nisn: (newRow.nisn && newRow.nisn !== '-') ? String(newRow.nisn) : existing.nisn,
+                    noKk: (newRow.noKk && newRow.noKk !== '-') ? String(newRow.noKk) : existing.noKk,
+                    nikAyah: (newRow.nikAyah && newRow.nikAyah !== '-') ? String(newRow.nikAyah) : existing.nikAyah,
+                    nikIbu: (newRow.nikIbu && newRow.nikIbu !== '-') ? String(newRow.nikIbu) : existing.nikIbu,
+                    noHp: (newRow.noHp && newRow.noHp !== '-') ? String(newRow.noHp) : existing.noHp,
+                  };
+                  return prev.map(item => item.id === newRow.id ? mergedRow : item);
                 }
                 return [newRow, ...prev];
               });
@@ -258,6 +276,18 @@ export default function App() {
                     if (updatedRow[k] !== undefined) {
                       (merged as any)[k] = updatedRow[k];
                     }
+                  }
+                }
+                const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
+                for (const field of idFields) {
+                  const existingVal = formatBigDigit(item[field]);
+                  const updatedVal = formatBigDigit(merged[field]);
+                  if (existingVal && existingVal !== '-' && existingVal.length > updatedVal.length) {
+                    (merged as any)[field] = existingVal;
+                  } else if (!existingVal || existingVal === '-') {
+                    (merged as any)[field] = existingVal;
+                  } else {
+                    (merged as any)[field] = updatedVal || existingVal;
                   }
                 }
                 return merged;
@@ -403,7 +433,24 @@ export default function App() {
       const saved = await insertTableRow('santri', 'smartsantri_santriList', finalSantri);
       const savedUnifiedStatus = saved.statusKeanggotaan || (saved as any).status || finalSantri.statusKeanggotaan || 'Aktif';
       saved.statusKeanggotaan = savedUnifiedStatus;
-      pendingOperations.current.delete(finalSantri.id);
+
+      // Preserve identification fields from finalSantri if missing/invalid/truncated in saved response
+      const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
+      for (const field of idFields) {
+        const localVal = formatBigDigit(finalSantri[field]);
+        const savedVal = formatBigDigit(saved[field]);
+        if (localVal && localVal !== '-' && localVal.length > savedVal.length) {
+          (saved as any)[field] = localVal;
+        } else if (!localVal || localVal === '-') {
+          (saved as any)[field] = localVal;
+        } else if (!savedVal || savedVal === '-') {
+          (saved as any)[field] = localVal;
+        } else {
+          (saved as any)[field] = savedVal;
+        }
+      }
+
+      pendingOperations.current.set(finalSantri.id, { data: saved, timestamp: Date.now() });
       setSantriList((prev) => prev.map(s => s.id === finalSantri.id ? saved : s));
     } catch (dbErr: any) {
       pendingOperations.current.delete(finalSantri.id);
@@ -448,6 +495,18 @@ export default function App() {
           if (saved[k] !== undefined) {
             (mergedSaved as any)[k] = saved[k];
           }
+        }
+      }
+      const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
+      for (const field of idFields) {
+        const localVal = formatBigDigit(processed[field]);
+        const savedVal = formatBigDigit(mergedSaved[field]);
+        if (localVal && localVal !== '-' && localVal.length > savedVal.length) {
+          (mergedSaved as any)[field] = localVal;
+        } else if (!localVal || localVal === '-') {
+          (mergedSaved as any)[field] = localVal;
+        } else {
+          (mergedSaved as any)[field] = savedVal || localVal;
         }
       }
       mergedSaved.statusKeanggotaan = mergedSaved.statusKeanggotaan || processed.statusKeanggotaan || 'Aktif';

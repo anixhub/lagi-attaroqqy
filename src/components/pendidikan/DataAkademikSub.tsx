@@ -569,7 +569,7 @@ export default function DataAkademikSub({
           ...s,
           kelas: finalClassString,
           statusEmis: updatedEmis,
-          pendidikanInternal: internalArr.join(', ') || undefined
+          pendidikanInternal: internalArr.join(', ')
         });
       });
 

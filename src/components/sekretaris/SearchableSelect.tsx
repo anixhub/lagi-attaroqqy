@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 
 interface Option {
@@ -32,8 +33,15 @@ export function SearchableSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number; dropUp: boolean }>({
+    top: 0,
+    left: 0,
+    width: 0,
+    dropUp: false
+  });
   
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
@@ -42,12 +50,46 @@ export function SearchableSelect({
     setSearchQuery(value || '');
   }, [value]);
 
+  // Update floating coords
+  const updateCoords = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const dropUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+
+      setCoords({
+        top: dropUp ? rect.top : rect.bottom,
+        left: rect.left,
+        width: rect.width,
+        dropUp
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      updateCoords();
+      const handleScrollOrResize = () => {
+        updateCoords();
+      };
+      window.addEventListener('resize', handleScrollOrResize);
+      window.addEventListener('scroll', handleScrollOrResize, true);
+      return () => {
+        window.removeEventListener('resize', handleScrollOrResize);
+        window.removeEventListener('scroll', handleScrollOrResize, true);
+      };
+    }
+  }, [isOpen]);
+
   // Click outside to close
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const inContainer = containerRef.current && containerRef.current.contains(target);
+      const inDropdown = dropdownRef.current && dropdownRef.current.contains(target);
+      if (!inContainer && !inDropdown) {
         setIsOpen(false);
-        // Reset query to actual selected value on blur
         setSearchQuery(value || '');
       }
     }
@@ -84,6 +126,7 @@ export function SearchableSelect({
     if (disabled) return;
     setIsOpen(true);
     setActiveIndex(-1);
+    updateCoords();
     // Select all text so user can immediately type to replace
     setTimeout(() => {
       inputRef.current?.select();
@@ -104,6 +147,7 @@ export function SearchableSelect({
     if (!isOpen) {
       if (e.key === 'ArrowDown' || e.key === 'Enter') {
         setIsOpen(true);
+        updateCoords();
         e.preventDefault();
       }
       return;
@@ -131,7 +175,6 @@ export function SearchableSelect({
         if (activeIndex >= 0 && activeIndex < filteredOptions.length) {
           handleSelectOption(filteredOptions[activeIndex]);
         } else if (filteredOptions.length > 0) {
-          // Select the first option if none is highlighted but user presses Enter
           handleSelectOption(filteredOptions[0]);
         }
         break;
@@ -186,7 +229,10 @@ export function SearchableSelect({
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            if (!isOpen) setIsOpen(true);
+            if (!isOpen) {
+              setIsOpen(true);
+              updateCoords();
+            }
             setActiveIndex(-1);
           }}
           onFocus={handleFocus}
@@ -234,9 +280,20 @@ export function SearchableSelect({
         </div>
       </div>
 
-      {/* Floating Dropdown */}
-      {isOpen && !disabled && (
-        <div className="absolute z-50 w-full mt-1.5 bg-white border border-slate-100 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+      {/* Floating Dropdown via Portal */}
+      {isOpen && !disabled && createPortal(
+        <div 
+          ref={dropdownRef}
+          style={{
+            position: 'fixed',
+            top: coords.dropUp ? 'auto' : `${coords.top + 6}px`,
+            bottom: coords.dropUp ? `${window.innerHeight - coords.top + 6}px` : 'auto',
+            left: `${coords.left}px`,
+            width: `${coords.width}px`,
+            zIndex: 999999,
+          }}
+          className="bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in duration-150"
+        >
           <ul 
             ref={listRef}
             className="max-h-60 overflow-y-auto py-1 text-slate-700 divide-y divide-slate-50"
@@ -271,7 +328,8 @@ export function SearchableSelect({
               </li>
             )}
           </ul>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

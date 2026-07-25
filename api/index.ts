@@ -318,16 +318,16 @@ function packPendidikanFormal(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
   if (Array.isArray(payload)) return payload.map(packPendidikanFormal);
   const copy = { ...payload };
-  if (copy.pendidikan_formal !== undefined || copy.pendidikanFormal !== undefined) {
-    const pfVal = String(copy.pendidikan_formal || copy.pendidikanFormal || "").trim();
-    if (pfVal) {
-      let existingNotes = (copy.catatan || "").replace(/\[PF:.*?\]\s*/g, "").trim();
-      copy.catatan = `[PF:${pfVal}] ${existingNotes}`.trim();
-    } else {
-      // Clear PF tag if empty
-      if (copy.catatan) {
-        copy.catatan = copy.catatan.replace(/\[PF:.*?\]\s*/g, "").trim() || null;
-      }
+  const pfVal = String(copy.pendidikan_formal || copy.pendidikanFormal || "").trim();
+  const kelasVal = String(copy.kelas || "").trim();
+
+  if (pfVal && pfVal.toLowerCase() !== 'tanpa kelas' && kelasVal.toLowerCase() !== 'tanpa kelas') {
+    let existingNotes = (copy.catatan || "").replace(/\[PF:.*?\]\s*/g, "").trim();
+    copy.catatan = `[PF:${pfVal}] ${existingNotes}`.trim();
+  } else {
+    // Clear PF tag if formal education is empty, Tanpa Kelas, or if kelas is Tanpa Kelas
+    if (copy.catatan && typeof copy.catatan === "string") {
+      copy.catatan = copy.catatan.replace(/\[PF:.*?\]\s*/g, "").trim() || null;
     }
   }
   return copy;
