@@ -17,7 +17,7 @@ import KeamananView from './components/KeamananView';
 import PengaturanView from './components/PengaturanView';
 import LoginView from './components/LoginView';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { formatBigDigit } from './lib/utils';
+import { formatBigDigit, mergeIdField } from './lib/utils';
 
 // Initial Mock Data
 import { 
@@ -248,12 +248,12 @@ export default function App() {
                   const mergedRow = {
                     ...existing,
                     ...newRow,
-                    nik: (newRow.nik && newRow.nik !== '-') ? String(newRow.nik) : existing.nik,
-                    nisn: (newRow.nisn && newRow.nisn !== '-') ? String(newRow.nisn) : existing.nisn,
-                    noKk: (newRow.noKk && newRow.noKk !== '-') ? String(newRow.noKk) : existing.noKk,
-                    nikAyah: (newRow.nikAyah && newRow.nikAyah !== '-') ? String(newRow.nikAyah) : existing.nikAyah,
-                    nikIbu: (newRow.nikIbu && newRow.nikIbu !== '-') ? String(newRow.nikIbu) : existing.nikIbu,
-                    noHp: (newRow.noHp && newRow.noHp !== '-') ? String(newRow.noHp) : existing.noHp,
+                    nik: mergeIdField(existing.nik, newRow.nik),
+                    nisn: mergeIdField(existing.nisn, newRow.nisn),
+                    noKk: mergeIdField(existing.noKk, newRow.noKk),
+                    nikAyah: mergeIdField(existing.nikAyah, newRow.nikAyah),
+                    nikIbu: mergeIdField(existing.nikIbu, newRow.nikIbu),
+                    noHp: mergeIdField(existing.noHp, newRow.noHp),
                   };
                   return prev.map(item => item.id === newRow.id ? mergedRow : item);
                 }
@@ -280,15 +280,7 @@ export default function App() {
                 }
                 const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
                 for (const field of idFields) {
-                  const existingVal = formatBigDigit(item[field]);
-                  const updatedVal = formatBigDigit(merged[field]);
-                  if (existingVal && existingVal !== '-' && existingVal.length > updatedVal.length) {
-                    (merged as any)[field] = existingVal;
-                  } else if (!existingVal || existingVal === '-') {
-                    (merged as any)[field] = existingVal;
-                  } else {
-                    (merged as any)[field] = updatedVal || existingVal;
-                  }
+                  (merged as any)[field] = mergeIdField(item[field], merged[field]);
                 }
                 return merged;
               }));
@@ -437,17 +429,7 @@ export default function App() {
       // Preserve identification fields from finalSantri if missing/invalid/truncated in saved response
       const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
       for (const field of idFields) {
-        const localVal = formatBigDigit(finalSantri[field]);
-        const savedVal = formatBigDigit(saved[field]);
-        if (localVal && localVal !== '-' && localVal.length > savedVal.length) {
-          (saved as any)[field] = localVal;
-        } else if (!localVal || localVal === '-') {
-          (saved as any)[field] = localVal;
-        } else if (!savedVal || savedVal === '-') {
-          (saved as any)[field] = localVal;
-        } else {
-          (saved as any)[field] = savedVal;
-        }
+        (saved as any)[field] = mergeIdField(finalSantri[field], saved[field]);
       }
 
       pendingOperations.current.set(finalSantri.id, { data: saved, timestamp: Date.now() });
@@ -499,15 +481,7 @@ export default function App() {
       }
       const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
       for (const field of idFields) {
-        const localVal = formatBigDigit(processed[field]);
-        const savedVal = formatBigDigit(mergedSaved[field]);
-        if (localVal && localVal !== '-' && localVal.length > savedVal.length) {
-          (mergedSaved as any)[field] = localVal;
-        } else if (!localVal || localVal === '-') {
-          (mergedSaved as any)[field] = localVal;
-        } else {
-          (mergedSaved as any)[field] = savedVal || localVal;
-        }
+        (mergedSaved as any)[field] = mergeIdField(processed[field], mergedSaved[field]);
       }
       mergedSaved.statusKeanggotaan = mergedSaved.statusKeanggotaan || processed.statusKeanggotaan || 'Aktif';
       // Keep in pendingOperations with updated timestamp so incoming stale realtime events don't overwrite it immediately

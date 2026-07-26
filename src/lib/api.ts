@@ -1,6 +1,6 @@
 // Client-side Supabase Database API Helper & Sync Manager
 import { createClient } from "@supabase/supabase-js";
-import { formatBigDigit } from "./utils";
+import { formatBigDigit, mergeIdField } from "./utils";
 
 export interface SupabaseStatus {
   connected: boolean;
@@ -194,17 +194,9 @@ export async function insertTableRow<T extends { id?: any }>(table: string, loca
             const merged: any = { id: row.id, ...row };
             const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
             for (const k of Object.keys(remoteObj)) {
-              if (remoteObj[k] !== undefined && remoteObj[k] !== null && remoteObj[k] !== '') {
+              if (remoteObj[k] !== undefined) {
                 if (strFields.includes(k)) {
-                  const clientVal = formatBigDigit((row as any)[k]);
-                  const serverVal = formatBigDigit(remoteObj[k]);
-                  if (clientVal && clientVal !== '-' && clientVal.length > serverVal.length) {
-                    merged[k] = clientVal;
-                  } else if (!clientVal || clientVal === '-') {
-                    merged[k] = clientVal;
-                  } else {
-                    merged[k] = serverVal || clientVal;
-                  }
+                  merged[k] = mergeIdField((row as any)[k], remoteObj[k]);
                 } else {
                   merged[k] = typeof remoteObj[k] === 'number' ? String(remoteObj[k]) : remoteObj[k];
                 }
@@ -304,15 +296,7 @@ export async function updateTableRow<T extends { id?: any }>(
             for (const k of Object.keys(camelRemote)) {
               if (camelRemote[k] !== undefined) {
                 if (strFields.includes(k)) {
-                  const clientVal = formatBigDigit((updatedData as any)[k]);
-                  const serverVal = formatBigDigit(camelRemote[k]);
-                  if (clientVal && clientVal !== '-' && clientVal.length > serverVal.length) {
-                    cleanedRemote[k] = clientVal;
-                  } else if (!clientVal || clientVal === '-') {
-                    cleanedRemote[k] = clientVal;
-                  } else {
-                    cleanedRemote[k] = serverVal || clientVal;
-                  }
+                  cleanedRemote[k] = mergeIdField((updatedData as any)[k], camelRemote[k]);
                 } else {
                   cleanedRemote[k] = camelRemote[k];
                 }
@@ -322,11 +306,7 @@ export async function updateTableRow<T extends { id?: any }>(
           remoteRow = { id, ...updatedData, ...cleanedRemote } as T;
           const identifierFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
           for (const key of identifierFields) {
-            const clientVal = formatBigDigit((updatedData as any)[key]);
-            const serverVal = formatBigDigit((remoteRow as any)[key]);
-            if (clientVal && clientVal !== '-' && clientVal.length > serverVal.length) {
-              (remoteRow as any)[key] = clientVal;
-            }
+            (remoteRow as any)[key] = mergeIdField((updatedData as any)[key], (remoteRow as any)[key]);
           }
         }
       }

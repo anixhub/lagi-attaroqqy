@@ -2,23 +2,44 @@ import { Santri, Lembaga, Kelas } from '../types';
 
 export function formatBigDigit(val: any): string {
   if (val === undefined || val === null || val === '') return '';
-  const str = String(val).trim();
-  if (str === '-') return '-';
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed === '-') return '-';
+    if (/^\d+$/.test(trimmed)) {
+      return trimmed;
+    }
+    if (trimmed.includes('e') || trimmed.includes('E')) {
+      try {
+        return BigInt(Math.round(Number(trimmed))).toString();
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
   if (typeof val === 'number') {
     try {
       return BigInt(Math.round(val)).toString();
     } catch {
-      return str;
+      return String(val);
     }
   }
-  if (str.includes('e') || str.includes('E')) {
-    try {
-      return BigInt(Math.round(Number(str))).toString();
-    } catch {
-      return str;
-    }
+  return String(val).trim();
+}
+
+export function mergeIdField(localRaw: any, remoteRaw: any): string {
+  const localVal = formatBigDigit(localRaw);
+  const remoteVal = formatBigDigit(remoteRaw);
+  
+  const localValid = Boolean(localVal && localVal !== '-');
+  const remoteValid = Boolean(remoteVal && remoteVal !== '-');
+
+  if (localValid && remoteValid) {
+    return localVal.length >= remoteVal.length ? localVal : remoteVal;
   }
-  return str;
+  if (localValid) return localVal;
+  if (remoteValid) return remoteVal;
+  return localVal || remoteVal || '';
 }
 
 export function cn(...inputs: any[]) {

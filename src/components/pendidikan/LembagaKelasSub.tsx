@@ -1155,23 +1155,30 @@ export default function LembagaKelasSub({
   // Get active students eligible to be added to this Class/Group
   const getEligibleStudentsForAdd = () => {
     if (!selectedKelas) return [];
+
+    const isAktif = (s: Santri) => (s.statusKeanggotaan || 'Aktif') === 'Aktif';
+
     if (activeTab === 'Rombel') {
-      // Students who are NOT already in this Rombel Group
+      // Students who are NOT already in this Rombel Group AND are active
       const alreadyAssignedIds = assignmentsList
         .filter(a => a.kelompokId === selectedKelas.id)
         .map(a => a.santriId);
-      return santriList.filter(s => s.gender === selectedGender && (s.statusKeanggotaan ? s.statusKeanggotaan === 'Aktif' : true) && !alreadyAssignedIds.includes(s.id));
+      return santriList.filter(s => 
+        isGenderMatch(s.gender, selectedGender) && 
+        isAktif(s) && 
+        !alreadyAssignedIds.includes(s.id)
+      );
     } else if (activeTab === 'Internal') {
       // Internal Pondok: Only active santri (whether EMIS terdaftar or not)
       return santriList.filter(s => {
-        if (s.gender !== selectedGender) return false;
-        if (s.statusKeanggotaan && s.statusKeanggotaan !== 'Aktif') return false;
+        if (!isGenderMatch(s.gender, selectedGender)) return false;
+        if (!isAktif(s)) return false;
         const sClassesLower = s.kelas ? s.kelas.split(',').map(x => x.trim().toLowerCase()) : [];
         if (selectedKelas && sClassesLower.includes(selectedKelas.nama.toLowerCase())) return false;
         return true;
       });
     } else {
-      // Formal Education: Santri housed in "Calon Peserta Didik" of selectedLembaga AND who are EMIS Terdaftar
+      // Formal Education: Santri housed in "Calon Peserta Didik" of selectedLembaga, active, and EMIS Terdaftar
       const defaultClassObj = getClassesOfLembaga(selectedLembaga?.id).find(isDefaultClass) || {
         id: 'default-' + selectedLembaga?.id,
         lembagaId: String(selectedLembaga?.id),
@@ -1186,7 +1193,7 @@ export default function LembagaKelasSub({
 
       return santriList.filter(s => {
         if (!isGenderMatch(s.gender, selectedGender)) return false;
-        if (s.statusKeanggotaan && s.statusKeanggotaan !== 'Aktif') return false;
+        if (!isAktif(s)) return false;
         if (!isEmisTerdaftar(s.statusEmis)) return false;
         if (!isStudentInLembaga(s, selectedLembaga)) return false;
         if (currentClassStudentIds.includes(s.id)) return false;
@@ -2110,8 +2117,8 @@ export default function LembagaKelasSub({
                           <Printer className="h-4 w-4 text-slate-600" />
                         </button>
                         {canWriteCurrent && (() => {
-                          const isLembagaFormal = false;
-                          const isSelectedKelasDefault = activeTab !== 'Rombel' && isDefaultClass(selectedKelas);
+                          const isRombelTab = (activeTab as string) === 'Rombel';
+                          const isSelectedKelasDefault = !isRombelTab && isDefaultClass(selectedKelas);
                           return (
                             <>
                               <button
@@ -2130,7 +2137,7 @@ export default function LembagaKelasSub({
                                 <Pencil className="h-4 w-4 text-slate-500" />
                               </button>
                             
-                              {activeTab !== 'Rombel' && !isSelectedKelasDefault && (
+                              {(!isSelectedKelasDefault || isRombelTab) && (
                                 <button
                                   disabled={isSelectionMode}
                                   onClick={() => {
@@ -2143,7 +2150,7 @@ export default function LembagaKelasSub({
                                       ? 'bg-emerald-50/55 border-emerald-50/55 opacity-40 cursor-not-allowed text-emerald-350' 
                                       : 'bg-emerald-50 hover:bg-emerald-100/80 text-[#00693E] border border-emerald-100 cursor-pointer shadow-3xs active:scale-95'
                                   }`}
-                                  title="Tambah Anggota"
+                                  title={isRombelTab ? 'Tambah Anggota Rombel' : 'Tambah Anggota Kelas'}
                                 >
                                   <UserPlus className="h-4 w-4" />
                                 </button>
@@ -3330,7 +3337,7 @@ export default function LembagaKelasSub({
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">
-                      Tambah Anggota Kelas
+                      {activeTab === 'Rombel' ? 'Tambah Anggota Rombel' : 'Tambah Anggota Kelas'}
                     </h3>
                     <p className="text-xs text-slate-500 font-medium">{selectedLembaga.nama} &bull; <span className="text-emerald-700 font-semibold">{selectedKelas.nama}</span></p>
                   </div>
@@ -3591,7 +3598,7 @@ export default function LembagaKelasSub({
         />
       )}
 
-      {/* FLOATING FIXED CLASS DROPDOWN */}
+      {/* FLOATING FIXED CLASS / ROMBEL DROPDOWN */}
       <AnimatePresence>
         {activeActionKelasId && kelasDropdownPos && (
           <>
@@ -3606,10 +3613,12 @@ export default function LembagaKelasSub({
                 left: `${kelasDropdownPos.left}px`,
                 zIndex: 9999
               }}
-              className="w-28 bg-white border border-slate-200 rounded-xl shadow-lg py-1 text-[11px] font-bold text-slate-700 text-left"
+              className="w-36 bg-white border border-slate-200 rounded-xl shadow-xl py-1 text-[11px] font-bold text-slate-700 text-left overflow-hidden"
             >
               {(() => {
-                const c = kelasList.find(x => x.id === activeActionKelasId);
+                const c = (subClasses && subClasses.find((x: any) => x.id === activeActionKelasId)) || 
+                          kelasList.find(x => x.id === activeActionKelasId) || 
+                          (groupsList && groupsList.find((x: any) => x.id === activeActionKelasId));
                 if (!c) return null;
                 const isDefault = activeTab !== 'Rombel' && isDefaultClass(c);
                 return (
@@ -3622,7 +3631,19 @@ export default function LembagaKelasSub({
                       }}
                       className="w-full text-left px-3 py-1.5 hover:bg-slate-50 hover:text-[#00693E] transition-colors cursor-pointer block"
                     >
-                      Edit
+                      Edit {activeTab === 'Rombel' ? 'Rombel' : 'Kelas'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedKelas(c);
+                        setAddMemberSearch('');
+                        setIsAddMemberModalOpen(true);
+                        setActiveActionKelasId(null);
+                        setKelasDropdownPos(null);
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-[#00693E]/10 hover:text-[#00693E] transition-colors cursor-pointer block border-t border-slate-100"
+                    >
+                      Tambah Anggota
                     </button>
                     {!isDefault && (
                       <button
@@ -3631,9 +3652,9 @@ export default function LembagaKelasSub({
                           setActiveActionKelasId(null);
                           setKelasDropdownPos(null);
                         }}
-                        className="w-full text-left px-3 py-1.5 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer text-rose-600 border-t border-slate-50 mt-1 block"
+                        className="w-full text-left px-3 py-1.5 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer text-rose-600 border-t border-slate-100 mt-0.5 block"
                       >
-                        Hapus
+                        Hapus {activeTab === 'Rombel' ? 'Rombel' : 'Kelas'}
                       </button>
                     )}
                   </>
