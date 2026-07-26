@@ -462,13 +462,18 @@ export default function LembagaKelasSub({
         return false;
       }
       const formalParts = s.pendidikanFormal.split(',').map(x => norm(x)).filter(Boolean);
-      return formalParts.some(pf => 
-        pf === targetId ||
-        (targetNama && pf === targetNama) ||
-        (targetKode && pf === targetKode) ||
-        (targetNama && targetNama.length > 2 && (pf.includes(targetNama) || targetNama.includes(pf))) ||
-        (targetKode && targetKode.length > 2 && (pf.includes(targetKode) || targetKode.includes(pf)))
-      );
+      return formalParts.some(pf => {
+        if (pf === targetId) return true;
+        if (targetNama && (pf === targetNama || pf.includes(targetNama) || targetNama.includes(pf))) return true;
+        if (targetKode) {
+          const normKode = norm(targetKode);
+          if (normKode) {
+            const words = pf.split(/[\s-]+/);
+            if (words.includes(normKode) || pf === normKode || pf.startsWith(normKode + ' ') || pf.startsWith(normKode + '-')) return true;
+          }
+        }
+        return false;
+      });
     }
 
     // 1. Check s.pendidikanInternal
@@ -543,8 +548,18 @@ export default function LembagaKelasSub({
         const parts = s.pendidikanFormal.split('-');
         if (parts.length > 1) {
           const lemPart = norm(parts[0]);
-          if (lemPart === norm(l.nama) || (l.kode && lemPart === norm(l.kode)) || norm(l.nama).includes(lemPart) || lemPart.includes(norm(l.nama))) {
+          const normNama = norm(l.nama);
+          const normKode = norm(l.kode);
+          const isLemMatch = lemPart === normNama || 
+            (normKode && (lemPart === normKode || lemPart.startsWith(normKode) || normNama.includes(lemPart) || lemPart.includes(normNama))) ||
+            (normNama && (normNama.includes(lemPart) || lemPart.includes(normNama)));
+          if (isLemMatch) {
             specificClassText = norm(parts.slice(1).join('-'));
+          }
+        } else {
+          const normFormal = norm(s.pendidikanFormal);
+          if (normFormal.includes('calon')) {
+            specificClassText = 'calon peserta didik';
           }
         }
       }
@@ -553,7 +568,12 @@ export default function LembagaKelasSub({
         const parts = s.pendidikanInternal.split('-');
         if (parts.length > 1) {
           const lemPart = norm(parts[0]);
-          if (lemPart === norm(l.nama) || (l.kode && lemPart === norm(l.kode)) || norm(l.nama).includes(lemPart) || lemPart.includes(norm(l.nama))) {
+          const normNama = norm(l.nama);
+          const normKode = norm(l.kode);
+          const isLemMatch = lemPart === normNama || 
+            (normKode && (lemPart === normKode || lemPart.startsWith(normKode) || normNama.includes(lemPart) || lemPart.includes(normNama))) ||
+            (normNama && (normNama.includes(lemPart) || lemPart.includes(normNama)));
+          if (isLemMatch) {
             specificClassText = norm(parts.slice(1).join('-'));
           }
         }
@@ -579,8 +599,15 @@ export default function LembagaKelasSub({
         // 3. Number/digit match (e.g., "kelas 1" vs "1")
         const targetDigits = targetNorm.replace(/\D/g, '');
         if (targetDigits) {
-          if (sClasses.some(sc => sc.replace(/\D/g, '') === targetDigits && (sc.includes('kelas') || targetNorm.includes('kelas') || sc === targetDigits))) {
-            return true;
+          const targetLetters = targetNorm.replace(/[^a-z]/gi, '');
+          for (const sc of sClasses) {
+            const scDigits = sc.replace(/\D/g, '');
+            const scLetters = sc.replace(/[^a-z]/gi, '');
+            if (scDigits === targetDigits) {
+              if (!targetLetters || !scLetters || scLetters.includes(targetLetters) || targetLetters.includes(scLetters) || scLetters === 'kelas' || targetLetters === 'kelas') {
+                return true;
+              }
+            }
           }
           if (specificClassText && specificClassText.replace(/\D/g, '') === targetDigits) {
             return true;
@@ -1155,12 +1182,20 @@ export default function LembagaKelasSub({
       };
       
       const cpStudents = getStudentsInClass(defaultClassObj, selectedLembaga);
-      return cpStudents.filter(s => {
-        if (s.gender !== selectedGender) return false;
+      const currentClassStudentIds = selectedKelas ? getStudentsInClass(selectedKelas, selectedLembaga).map(s => s.id) : [];
+
+      return santriList.filter(s => {
+        if (!isGenderMatch(s.gender, selectedGender)) return false;
         if (s.statusKeanggotaan && s.statusKeanggotaan !== 'Aktif') return false;
         if (!isEmisTerdaftar(s.statusEmis)) return false;
-        if (selectedKelas && selectedKelas.id === defaultClassObj.id) return false;
-        return true;
+        if (!isStudentInLembaga(s, selectedLembaga)) return false;
+        if (currentClassStudentIds.includes(s.id)) return false;
+
+        const inCP = cpStudents.some(cp => cp.id === s.id);
+        const normFormal = (s.pendidikanFormal || '').toLowerCase();
+        const isCalonInFormal = normFormal.includes('calon');
+        
+        return inCP || isCalonInFormal;
       });
     }
   };
