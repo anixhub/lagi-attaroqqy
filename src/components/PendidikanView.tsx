@@ -1022,22 +1022,32 @@ export default function PendidikanView({
   };
 
   const handleAddAssignment = async (newAss: RombelAssignment) => {
+    const catId = newAss.kategoriId || groupsList.find(g => g.id === newAss.kelompokId)?.kategoriId || '';
+    const fullAss: RombelAssignment = { ...newAss, kategoriId: catId };
+
+    const isSameCategory = (a: RombelAssignment) => {
+      if (a.santriId !== fullAss.santriId) return false;
+      if (catId && a.kategoriId === catId) return true;
+      const targetGroup = groupsList.find(g => g.id === a.kelompokId);
+      return targetGroup ? targetGroup.kategoriId === catId : false;
+    };
+
     // 1. Optimistic local update
     const tempId = `temp-${Date.now()}-${Math.random()}`;
-    const tempAss = { ...newAss, id: tempId };
+    const tempAss = { ...fullAss, id: tempId };
     setAssignmentsList(prev => {
-      const cleaned = prev.filter(a => !(a.santriId === newAss.santriId && a.kategoriId === newAss.kategoriId));
+      const cleaned = prev.filter(a => !isSameCategory(a));
       return [...cleaned, tempAss];
     });
 
     try {
       // 2. Since there's a unique constraint on (santri_id, kategori_id) in database, check if existing on DB
-      const existing = assignmentsList.find(a => a.santriId === newAss.santriId && a.kategoriId === newAss.kategoriId);
+      const existing = assignmentsList.find(a => isSameCategory(a));
       if (existing && existing.id && !existing.id.startsWith('temp-')) {
         await deleteTableRow('rombel_assignment', 'smartsantri_rombel_assignments', existing.id);
       }
       
-      const saved = await insertTableRow('rombel_assignment', 'smartsantri_rombel_assignments', newAss);
+      const saved = await insertTableRow('rombel_assignment', 'smartsantri_rombel_assignments', fullAss);
       setAssignmentsList(prev => {
         // Replace tempId with real saved.id
         return prev.map(a => a.id === tempId ? saved : a);

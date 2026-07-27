@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Plus, Trash2, Edit, ChevronRight, Users, Award, X, Search, Compass, Tag, BookOpen, AlertCircle, ChevronLeft, ArrowLeftRight, LayoutGrid, List, MoreVertical, ArrowUpDown, Download, FileSpreadsheet, Printer, CheckSquare, Eye, ArrowUp, ArrowDown, ChevronDown
+  Plus, Trash2, Edit, ChevronRight, Users, Award, X, Search, Compass, Tag, BookOpen, AlertCircle, ChevronLeft, ArrowLeftRight, LayoutGrid, List, MoreVertical, ArrowUpDown, Download, FileSpreadsheet, Printer, CheckSquare, Eye, ArrowUp, ArrowDown, ChevronDown, Info, Folder
 } from 'lucide-react';
 import { KategoriRombel, KelompokRombel, RombelAssignment, Santri, isEmisTerdaftar } from '../../types';
 import SantriDetailModal from '../sekretaris/SantriDetailModal';
@@ -75,6 +75,7 @@ export default function RombelSub({
   // Searches and batch select
   const [rombelSearchQuery, setRombelSearchQuery] = useState('');
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [studentKamarFilter, setStudentKamarFilter] = useState<string>('Semua');
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
@@ -82,6 +83,9 @@ export default function RombelSub({
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [selectedModalStudentIds, setSelectedModalStudentIds] = useState<string[]>([]);
   const [modalStudentSearchQuery, setModalStudentSearchQuery] = useState('');
+  const [modalKamarFilter, setModalKamarFilter] = useState<string>('Semua');
+  const [modalGroupFilter, setModalGroupFilter] = useState<string>('Semua');
+  const [collapsedModalSections, setCollapsedModalSections] = useState<Record<string, boolean>>({});
 
   // Dropdowns
   const [activeDropdownGroupId, setActiveDropdownGroupId] = useState<string | null>(null);
@@ -603,16 +607,19 @@ export default function RombelSub({
     const members = getMembersOfGroup(activeGroupForDetail.id, selectedGender);
     
     // Filter
-    const filtered = !studentSearchQuery
-      ? members
-      : members.filter(s => {
-          const query = studentSearchQuery.toLowerCase();
-          return (
-            String(s.nama || '').toLowerCase().includes(query) ||
-            String(s.nis || '').toLowerCase().includes(query) ||
-            String(s.kamar || '').toLowerCase().includes(query)
-          );
-        });
+    const filtered = members.filter(s => {
+      if (studentKamarFilter !== 'Semua') {
+        const k = (s.kamar || '-').trim();
+        if (k !== studentKamarFilter) return false;
+      }
+      if (!studentSearchQuery) return true;
+      const query = studentSearchQuery.toLowerCase();
+      return (
+        String(s.nama || '').toLowerCase().includes(query) ||
+        String(s.nis || '').toLowerCase().includes(query) ||
+        String(s.kamar || '').toLowerCase().includes(query)
+      );
+    });
 
     // Sort
     return [...filtered].sort((a, b) => {
@@ -1256,99 +1263,123 @@ export default function RombelSub({
                   })()}
 
                   {/* Search Box & Sort Button for Students */}
-                  <div className="flex items-center gap-2 mt-3 shrink-0">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Cari santri, NIS, atau kamar..."
-                        value={studentSearchQuery}
-                        onChange={(e) => setStudentSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-8 py-1.5 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none"
-                      />
-                      {studentSearchQuery && (
-                        <button
-                          onClick={() => setStudentSearchQuery('')}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                  {(() => {
+                    const groupMembers = activeGroupForDetail ? getMembersOfGroup(activeGroupForDetail.id, selectedGender) : [];
+                    const availableKamarsInGroup = Array.from(
+                      new Set(groupMembers.map(s => s.kamar).filter((k): k is string => !!k && k.trim() !== '' && k !== '-'))
+                    ).sort();
 
-                    {/* Sort Student Button */}
-                    <div className="relative" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => setIsStudentSortDropdownOpen(!isStudentSortDropdownOpen)}
-                        className={`h-8 w-8 flex items-center justify-center rounded-xl border font-sans transition-all hover:bg-slate-50 cursor-pointer ${
-                          isStudentSortDropdownOpen
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            : 'border-slate-200 bg-white text-slate-500'
-                        }`}
-                        title="Urutkan"
-                      >
-                        <ArrowUpDown className="h-4 w-4" />
-                      </button>
-                      <AnimatePresence>
-                        {isStudentSortDropdownOpen && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-10 cursor-default" 
-                              onClick={() => setIsStudentSortDropdownOpen(false)}
-                            />
-                            <motion.div
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 10 }}
-                              className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl z-20 text-slate-700 font-sans"
+                    return (
+                      <div className="flex flex-col sm:flex-row items-center gap-2 mt-3 shrink-0">
+                        <div className="relative flex-1 w-full">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Cari santri, NIS, atau kamar..."
+                            value={studentSearchQuery}
+                            onChange={(e) => setStudentSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-8 py-1.5 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none"
+                          />
+                          {studentSearchQuery && (
+                            <button
+                              onClick={() => setStudentSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                             >
-                              <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 mb-2 pb-1 border-b border-slate-50">
-                                Urutkan Berdasarkan
-                              </h4>
-                              <div className="space-y-1">
-                                {[
-                                  { key: 'name', label: 'Nama' },
-                                  { key: 'nis', label: 'NIS' }
-                                ].map((opt) => {
-                                  const isActive = studentSortKey.startsWith(opt.key);
-                                  const direction = studentSortKey.endsWith('desc') ? 'desc' : 'asc';
-                                  return (
-                                    <button
-                                      key={opt.key}
-                                      type="button"
-                                      onClick={() => {
-                                        if (isActive) {
-                                          setStudentSortKey(direction === 'asc' ? `${opt.key}-desc` as any : `${opt.key}-asc` as any);
-                                        } else {
-                                          setStudentSortKey(opt.key === 'name' ? 'name-asc' : 'nis-asc');
-                                        }
-                                        setIsStudentSortDropdownOpen(false);
-                                      }}
-                                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs font-semibold transition-colors cursor-pointer ${
-                                        isActive
-                                          ? 'bg-emerald-50 text-emerald-800 font-bold'
-                                          : 'hover:bg-slate-50 text-slate-600'
-                                      }`}
-                                    >
-                                      <span>{opt.label}</span>
-                                      {isActive && (
-                                        direction === 'asc' ? (
-                                          <ArrowUp className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
-                                        ) : (
-                                          <ArrowDown className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
-                                        )
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </motion.div>
-                          </>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Filter Kamar Select */}
+                        <div className="w-full sm:w-36 relative shrink-0">
+                          <select
+                            value={studentKamarFilter}
+                            onChange={(e) => setStudentKamarFilter(e.target.value)}
+                            className="w-full py-1.5 pl-2.5 pr-7 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none appearance-none cursor-pointer"
+                          >
+                            <option value="Semua">Semua Kamar</option>
+                            {availableKamarsInGroup.map(kmr => (
+                              <option key={kmr} value={kmr}>Kamar {kmr}</option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                        </div>
+
+                        {/* Sort Student Button */}
+                        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setIsStudentSortDropdownOpen(!isStudentSortDropdownOpen)}
+                            className={`h-8 w-8 flex items-center justify-center rounded-xl border font-sans transition-all hover:bg-slate-50 cursor-pointer ${
+                              isStudentSortDropdownOpen
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                : 'border-slate-200 bg-white text-slate-500'
+                            }`}
+                            title="Urutkan"
+                          >
+                            <ArrowUpDown className="h-4 w-4" />
+                          </button>
+                          <AnimatePresence>
+                            {isStudentSortDropdownOpen && (
+                              <>
+                                <div 
+                                  className="fixed inset-0 z-10 cursor-default" 
+                                  onClick={() => setIsStudentSortDropdownOpen(false)}
+                                />
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: 10 }}
+                                  className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-100 bg-white p-3 shadow-xl z-20 text-slate-700 font-sans"
+                                >
+                                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 mb-2 pb-1 border-b border-slate-50">
+                                    Urutkan Berdasarkan
+                                  </h4>
+                                  <div className="space-y-1">
+                                    {[
+                                      { key: 'name', label: 'Nama' },
+                                      { key: 'nis', label: 'NIS' }
+                                    ].map((opt) => {
+                                      const isActive = studentSortKey.startsWith(opt.key);
+                                      const direction = studentSortKey.endsWith('desc') ? 'desc' : 'asc';
+                                      return (
+                                        <button
+                                          key={opt.key}
+                                          type="button"
+                                          onClick={() => {
+                                            if (isActive) {
+                                              setStudentSortKey(direction === 'asc' ? `${opt.key}-desc` as any : `${opt.key}-asc` as any);
+                                            } else {
+                                              setStudentSortKey(opt.key === 'name' ? 'name-asc' : 'nis-asc');
+                                            }
+                                            setIsStudentSortDropdownOpen(false);
+                                          }}
+                                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs font-semibold transition-colors cursor-pointer ${
+                                            isActive
+                                              ? 'bg-emerald-50 text-emerald-800 font-bold'
+                                              : 'hover:bg-slate-50 text-slate-600'
+                                          }`}
+                                        >
+                                          <span>{opt.label}</span>
+                                          {isActive && (
+                                            direction === 'asc' ? (
+                                              <ArrowUp className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+                                            ) : (
+                                              <ArrowDown className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+                                            )
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </motion.div>
+                              </>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Student Bulk Action Bar */}
                   {selectedStudentIds.length > 0 && (
@@ -2230,13 +2261,13 @@ export default function RombelSub({
               className="relative bg-white rounded-2xl p-5 shadow-2xl w-full max-w-lg z-10 flex flex-col h-[520px] justify-between"
             >
               {/* Header */}
-              <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 shrink-0">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
                 <div>
                   <h3 className="font-display text-sm font-extrabold text-slate-900">
                     Tambah Anggota Rombel ({selectedGender})
                   </h3>
                   <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
-                    Menambahkan santri ke rombel: <span className="font-bold text-slate-800">{activeGroupForDetail.nama}</span>
+                    Menambahkan santri ke rombel: <span className="font-bold text-slate-800">{activeGroupForDetail.nama}</span> ({activeCategory?.nama})
                   </p>
                 </div>
                 <button
@@ -2245,33 +2276,71 @@ export default function RombelSub({
                     setSelectedModalStudentIds([]);
                     setModalStudentSearchQuery('');
                   }}
-                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
                 >
                   <X className="h-4.5 w-4.5" />
                 </button>
               </div>
 
-              {/* Search Inside Modal */}
-              <div className="py-3 shrink-0">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Cari nama santri atau NIS..."
-                    value={modalStudentSearchQuery}
-                    onChange={(e) => setModalStudentSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none"
-                  />
-                  {modalStudentSearchQuery && (
-                    <button
-                      onClick={() => setModalStudentSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
+              {/* Rule Info Banner */}
+              <div className="mt-2.5 px-3 py-1.5 bg-emerald-50/70 border border-emerald-100/80 rounded-xl flex items-center gap-2 shrink-0 text-[10px] text-emerald-800 font-medium">
+                <Info className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>1 santri hanya dapat mengikuti <strong>1 kelompok</strong> di kategori {activeCategory?.nama || 'ini'}, namun boleh mengikuti kategori rombel lainnya.</span>
               </div>
+
+              {/* Search & Filters Inside Modal */}
+              {(() => {
+                const eligibleStudents = santriList.filter(s => {
+                  if (s.gender !== selectedGender) return false;
+                  const isAlreadyInGroup = activeGroupForDetail && assignmentsList.some(a => a.santriId === s.id && a.kelompokId === activeGroupForDetail.id);
+                  return !isAlreadyInGroup;
+                });
+                const availableKamarsModal = Array.from(
+                  new Set(eligibleStudents.map(s => s.kamar).filter((k): k is string => !!k && k.trim() !== '' && k !== '-'))
+                ).sort();
+
+                return (
+                  <div className="py-2.5 shrink-0 flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama atau NIS..."
+                        value={modalStudentSearchQuery}
+                        onChange={(e) => setModalStudentSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-8 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none"
+                      />
+                      {modalStudentSearchQuery && (
+                        <button
+                          onClick={() => setModalStudentSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter Kelompok Rombel */}
+                    <div className="w-full sm:w-48 relative shrink-0">
+                      <select
+                        value={modalGroupFilter}
+                        onChange={(e) => setModalGroupFilter(e.target.value)}
+                        className="w-full py-2 pl-3 pr-8 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 font-bold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none appearance-none cursor-pointer truncate"
+                      >
+                        <option value="Semua">Semua Kelompok</option>
+                        <option value="Belum">Belum Tergabung</option>
+                        {groupsList
+                          .filter(g => g.kategoriId === selectedCategoryId && (!activeGroupForDetail || g.id !== activeGroupForDetail.id))
+                          .map(g => (
+                            <option key={g.id} value={g.id}>{g.nama}</option>
+                          ))
+                        }
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Select All inside Modal */}
               {(() => {
@@ -2286,14 +2355,42 @@ export default function RombelSub({
                 });
 
                 const filteredEligible = eligibleStudents.filter(s => {
-                  if (!modalStudentSearchQuery) return true;
-                  const query = modalStudentSearchQuery.toLowerCase();
-                  return (
-                    String(s.nama || '').toLowerCase().includes(query) ||
-                    String(s.nis || '').toLowerCase().includes(query) ||
-                    String(s.kamar || '').toLowerCase().includes(query) ||
-                    (s.kelas && String(s.kelas).toLowerCase().includes(query))
-                  );
+                  // Filter Kelompok Rombel
+                  if (modalGroupFilter !== 'Semua') {
+                    const ass = assignmentsList.find(a => 
+                      a.santriId === s.id && 
+                      (
+                        a.kategoriId === selectedCategoryId || 
+                        groupsList.some(g => g.id === a.kelompokId && g.kategoriId === selectedCategoryId)
+                      )
+                    );
+                    if (modalGroupFilter === 'Belum') {
+                      if (ass) return false;
+                    } else {
+                      if (!ass || ass.kelompokId !== modalGroupFilter) return false;
+                    }
+                  }
+
+                  // Search query
+                  if (modalStudentSearchQuery) {
+                    const query = modalStudentSearchQuery.toLowerCase();
+                    const ass = assignmentsList.find(a => 
+                      a.santriId === s.id && 
+                      (
+                        a.kategoriId === selectedCategoryId || 
+                        groupsList.some(g => g.id === a.kelompokId && g.kategoriId === selectedCategoryId)
+                      )
+                    );
+                    const grp = ass ? groupsList.find(g => g.id === ass.kelompokId)?.nama : '';
+                    return (
+                      String(s.nama || '').toLowerCase().includes(query) ||
+                      String(s.nis || '').toLowerCase().includes(query) ||
+                      String(s.kamar || '').toLowerCase().includes(query) ||
+                      (grp && String(grp).toLowerCase().includes(query))
+                    );
+                  }
+
+                  return true;
                 });
 
                 const isAllEligibleSelected = filteredEligible.length > 0 && filteredEligible.every(s => selectedModalStudentIds.includes(s.id));
@@ -2313,9 +2410,50 @@ export default function RombelSub({
                   }
                 };
 
+                // Group students into sections (segmented by Group)
+                const categoryGroups = groupsList.filter(
+                  g => g.kategoriId === selectedCategoryId && (!activeGroupForDetail || g.id !== activeGroupForDetail.id)
+                );
+
+                const sectionsMap: { [key: string]: { label: string; items: Santri[] } } = {
+                  'Belum': { label: 'Belum Tergabung', items: [] }
+                };
+
+                categoryGroups.forEach(g => {
+                  sectionsMap[g.id] = { label: g.nama, items: [] };
+                });
+
+                filteredEligible.forEach(s => {
+                  const ass = assignmentsList.find(a => 
+                    a.santriId === s.id && 
+                    (
+                      a.kategoriId === selectedCategoryId || 
+                      groupsList.some(g => g.id === a.kelompokId && g.kategoriId === selectedCategoryId)
+                    )
+                  );
+                  if (!ass) {
+                    sectionsMap['Belum'].items.push(s);
+                  } else {
+                    if (sectionsMap[ass.kelompokId]) {
+                      sectionsMap[ass.kelompokId].items.push(s);
+                    } else {
+                      const foundGrp = groupsList.find(g => g.id === ass.kelompokId);
+                      if (foundGrp) {
+                        sectionsMap[ass.kelompokId] = { label: foundGrp.nama, items: [s] };
+                      } else {
+                        sectionsMap['Belum'].items.push(s);
+                      }
+                    }
+                  }
+                });
+
+                const activeSections = Object.entries(sectionsMap)
+                  .map(([key, data]) => ({ key, label: data.label, items: data.items }))
+                  .filter(sec => sec.items.length > 0);
+
                 return (
                   <>
-                    <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50 rounded-xl mb-2 shrink-0 text-[10px] font-bold text-slate-500">
+                    <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50 rounded-xl mb-1 shrink-0 text-[10px] font-bold text-slate-500">
                       <div className="flex items-center gap-2">
                         <div 
                           onClick={handleToggleSelectAllEligible}
@@ -2334,95 +2472,151 @@ export default function RombelSub({
                       </div>
                     </div>
 
-                    {/* Scrollable list of students */}
-                    <div className="flex-1 overflow-y-auto pr-1 space-y-2 mb-4 min-h-0">
+                    {/* Scrollable segmented list of students */}
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-1.5 mb-2 min-h-0">
                       {filteredEligible.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
                           <Users className="h-8 w-8 text-slate-300 mb-1.5" />
                           <p className="text-xs font-bold text-slate-700">Tidak Ada Santri Tersedia</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            Semua santri {selectedGender} yang cocok mungkin sudah terdaftar di kelompok rombel ini.
+                            Tidak ada santri yang sesuai dengan filter atau pencarian.
                           </p>
                         </div>
                       ) : (
-                        filteredEligible.map(s => {
-                          const isChecked = selectedModalStudentIds.includes(s.id);
-                          const isAssignedToOtherGroupInCat = assignmentsList.some(a => a.santriId === s.id && a.kategoriId === selectedCategoryId && a.kelompokId !== activeGroupForDetail.id);
-                          
-                          // Find name of current group if registered in other group under same category
-                          const otherGroupName = (() => {
-                            if (!isAssignedToOtherGroupInCat) return null;
-                            const ass = assignmentsList.find(a => a.santriId === s.id && a.kategoriId === selectedCategoryId);
-                            if (!ass) return null;
-                            const found = groupsList.find(g => g.id === ass.kelompokId);
-                            return found ? found.nama : null;
-                          })();
+                        activeSections.map(section => {
+                          const isCollapsed = !!collapsedModalSections[section.key];
+                          const isAllSectionSelected = section.items.length > 0 && section.items.every(s => selectedModalStudentIds.includes(s.id));
 
                           return (
-                            <div
-                              key={`eligible-${s.id}`}
-                              onClick={() => {
-                                setSelectedModalStudentIds(prev =>
-                                  prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                                );
-                              }}
-                              className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
-                                isChecked
-                                  ? 'border-emerald-200 bg-emerald-50/10 shadow-xs'
-                                  : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50/50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                <div className={`h-4 w-4 rounded border flex items-center justify-center transition-all ${
-                                  isChecked
-                                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                                    : 'border-slate-300 bg-white'
-                                }`}>
-                                  {isChecked && <CheckSquare className="h-2.5 w-2.5 stroke-[3px]" />}
+                            <div key={`section-${section.key}`} className="space-y-1">
+                              {/* Segment Header (Explorer VCS style) */}
+                              <div 
+                                onClick={() => {
+                                  setCollapsedModalSections(prev => ({ ...prev, [section.key]: !prev[section.key] }));
+                                }}
+                                className="sticky top-0 z-10 px-2.5 py-1.5 bg-slate-100/95 backdrop-blur-xs border-y border-slate-200/90 rounded-lg flex items-center justify-between text-[11px] font-bold text-slate-700 shadow-2xs select-none cursor-pointer hover:bg-slate-200/80 transition-all"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <div className="p-0.5 hover:bg-slate-200/80 rounded text-slate-500 transition-colors shrink-0">
+                                    {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                  </div>
+                                  <Folder className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                                  <span className="uppercase tracking-wide truncate">{section.label}</span>
+                                  <span className="px-1.5 py-0.2 rounded-full bg-white text-slate-600 text-[10px] font-extrabold border border-slate-200 shrink-0">
+                                    {section.items.length}
+                                  </span>
                                 </div>
 
-                                <img
-                                  src={s.filePasFoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
-                                  alt={s.nama}
-                                  referrerPolicy="no-referrer"
-                                  className="h-7 w-7 rounded-full object-cover shrink-0 border border-slate-200"
-                                />
-
-                                <div className="min-w-0">
-                                  <p className="text-xs font-bold text-slate-850 truncate leading-tight">{s.nama}</p>
-                                  <p className="text-[9px] font-mono text-slate-400 mt-0.5">
-                                    {s.nis}{s.kecamatan || s.kabupaten ? ` • ${[s.kecamatan, s.kabupaten].filter(Boolean).join(', ')}` : ''}
-                                  </p>
+                                <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const sectionIds = section.items.map(s => s.id);
+                                      if (isAllSectionSelected) {
+                                        setSelectedModalStudentIds(prev => prev.filter(id => !sectionIds.includes(id)));
+                                      } else {
+                                        setSelectedModalStudentIds(prev => Array.from(new Set([...prev, ...sectionIds])));
+                                      }
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
+                                      isAllSectionSelected
+                                        ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                                        : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:border-emerald-400'
+                                    }`}
+                                    title={isAllSectionSelected ? "Batal pilih semua di kelompok ini" : "Pilih semua di kelompok ini"}
+                                  >
+                                    {isAllSectionSelected ? (
+                                      <>
+                                        <CheckSquare className="h-3 w-3 stroke-[2.5]" />
+                                        <span>Terpilih Semua</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Plus className="h-3 w-3 stroke-[2.5]" />
+                                        <span>Tambahkan Semua</span>
+                                      </>
+                                    )}
+                                  </button>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0 pl-2" onClick={(e) => e.stopPropagation()}>
-                                {otherGroupName ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200/50 px-2 py-0.5 text-[9px] font-bold text-amber-700">
-                                    <ArrowLeftRight className="h-2.5 w-2.5" />
-                                    Pindahan: {otherGroupName}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600">
-                                    Belum Terdaftar
-                                  </span>
-                                )}
+                              {/* Section Items */}
+                              {!isCollapsed && section.items.map(s => {
+                              const isChecked = selectedModalStudentIds.includes(s.id);
+                              const isAssignedToOtherGroupInCat = assignmentsList.some(a => a.santriId === s.id && a.kategoriId === selectedCategoryId && a.kelompokId !== activeGroupForDetail.id);
+                              
+                              // Find name of current group if registered in other group under same category
+                              const otherGroupName = (() => {
+                                if (!isAssignedToOtherGroupInCat) return null;
+                                const ass = assignmentsList.find(a => a.santriId === s.id && a.kategoriId === selectedCategoryId);
+                                if (!ass) return null;
+                                const found = groupsList.find(g => g.id === ass.kelompokId);
+                                return found ? found.nama : null;
+                              })();
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedSantriForDetail(s);
+                              return (
+                                <div
+                                  key={`eligible-${s.id}`}
+                                  onClick={() => {
+                                    setSelectedModalStudentIds(prev =>
+                                      prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                                    );
                                   }}
-                                  className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer bg-transparent"
-                                  title="Lihat Detail Biodata"
+                                  className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                                    isChecked
+                                      ? 'border-emerald-200 bg-emerald-50/10 shadow-xs'
+                                      : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50/50'
+                                  }`}
                                 >
-                                  <Eye className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <div className={`h-4 w-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                      isChecked
+                                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                                        : 'border-slate-300 bg-white'
+                                    }`}>
+                                      {isChecked && <CheckSquare className="h-2.5 w-2.5 stroke-[3px]" />}
+                                    </div>
+
+                                    <img
+                                      src={s.filePasFoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
+                                      alt={s.nama}
+                                      referrerPolicy="no-referrer"
+                                      className="h-7 w-7 rounded-full object-cover shrink-0 border border-slate-200"
+                                    />
+
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-bold text-slate-850 truncate leading-tight">{s.nama}</p>
+                                      <p className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
+                                        <span className="font-semibold text-slate-700">{s.nis || '-'}</span>
+                                        <span className="mx-1 text-slate-300">|</span>
+                                        <span className="font-semibold text-slate-700">{s.kamar || '-'}</span>
+                                        <span className="mx-1 text-slate-300">|</span>
+                                        <span className={`font-semibold ${otherGroupName ? 'text-amber-700 font-bold' : 'text-slate-400 font-normal'}`}>
+                                          {otherGroupName || 'Belum tergabung'}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0 pl-2" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedSantriForDetail(s);
+                                      }}
+                                      className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer bg-transparent"
+                                      title="Lihat Detail Biodata"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })
                       )}
                     </div>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   School, Plus, Trash2, Edit, Users, BookOpen, ChevronRight, ChevronLeft,
-  ArrowLeft, Search, GraduationCap, ArrowLeftRight, Check, CheckCircle2, 
+  ArrowLeft, Search, GraduationCap, ArrowLeftRight, Check, CheckCircle2, CheckSquare, 
   UserCheck, AlertCircle, X, MoreVertical, Award, ShieldAlert, UserMinus, ArrowRightLeft,
   Folder, FolderOpen, User, ArrowUpDown, Pencil, Settings, UserPlus, ArrowUp, ArrowDown,
   ChevronDown, ChevronsUpDown, Printer, Sparkles
@@ -102,6 +102,7 @@ export default function LembagaKelasSub({
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('Semua');
+  const [kamarFilter, setKamarFilter] = useState<string>('Semua');
   const [activeActionStudentId, setActiveActionStudentId] = useState<string | null>(null);
   const [activeEmisDropdownId, setActiveEmisDropdownId] = useState<string | null>(null);
   const [activeVervalDropdownId, setActiveVervalDropdownId] = useState<string | null>(null);
@@ -259,7 +260,9 @@ export default function LembagaKelasSub({
   
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [addMemberSearch, setAddMemberSearch] = useState('');
+  const [addMemberGroupFilter, setAddMemberGroupFilter] = useState<string>('Semua');
   const [selectedModalStudentIds, setSelectedModalStudentIds] = useState<string[]>([]);
+  const [collapsedModalSections, setCollapsedModalSections] = useState<Record<string, boolean>>({});
 
   // Toast Notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -729,6 +732,11 @@ export default function LembagaKelasSub({
 
   const currentClassStudents = getStudentsInSelectedClass();
 
+  // List of available rooms in the current class
+  const availableKamarsInClass = Array.from(
+    new Set(currentClassStudents.map(s => s.kamar).filter((k): k is string => !!k && k.trim() !== '' && k !== '-'))
+  ).sort();
+
   // Filtered students by search query and status filter
   const searchedStudents = currentClassStudents.filter(s => {
     const q = searchQuery.toLowerCase();
@@ -740,6 +748,12 @@ export default function LembagaKelasSub({
     );
 
     if (!matchesSearch) return false;
+
+    // Filter Kamar
+    if (kamarFilter && kamarFilter !== 'Semua') {
+      const studentKamar = (s.kamar || '-').trim();
+      if (studentKamar !== kamarFilter) return false;
+    }
 
     // Apply status filter
     if (statusFilter && statusFilter !== 'Semua') {
@@ -1214,10 +1228,41 @@ export default function LembagaKelasSub({
     s => !selectedModalStudentIds.includes(s.id)
   );
 
-  const searchedEligibleStudents = unselectedEligibleStudents.filter(s => 
-    (s.nama || '').toLowerCase().includes(addMemberSearch.toLowerCase()) ||
-    (s.nis && s.nis.toLowerCase().includes(addMemberSearch.toLowerCase()))
-  );
+  const availableKamarsInEligible = Array.from(
+    new Set(unselectedEligibleStudents.map(s => s.kamar).filter((k): k is string => !!k && k.trim() !== '' && k !== '-'))
+  ).sort();
+
+  const searchedEligibleStudents = unselectedEligibleStudents.filter(s => {
+    const q = addMemberSearch.toLowerCase();
+    const catId = selectedLembaga?.id || (selectedKelas ? groupsList.find(g => g.id === selectedKelas.id)?.kategoriId : undefined);
+    const ass = assignmentsList.find(a => 
+      a.santriId === s.id && 
+      (
+        (catId && a.kategoriId === catId) || 
+        groupsList.some(g => g.id === a.kelompokId && g.kategoriId === catId)
+      )
+    );
+    const grpName = ass ? groupsList.find(g => g.id === ass.kelompokId)?.nama : '';
+
+    const matchesSearch = (
+      (s.nama || '').toLowerCase().includes(q) ||
+      (s.nis && s.nis.toLowerCase().includes(q)) ||
+      (s.kamar && s.kamar.toLowerCase().includes(q)) ||
+      (grpName && grpName.toLowerCase().includes(q))
+    );
+
+    if (!matchesSearch) return false;
+
+    if (addMemberGroupFilter && addMemberGroupFilter !== 'Semua') {
+      if (addMemberGroupFilter === 'Belum') {
+        if (ass) return false;
+      } else {
+        if (!ass || ass.kelompokId !== addMemberGroupFilter) return false;
+      }
+    }
+
+    return true;
+  });
 
   // Selected students in modal (for right column)
   const selectedStudentsForModal = santriList.filter(s => 
@@ -2143,6 +2188,7 @@ export default function LembagaKelasSub({
                                   onClick={() => {
                                     if (isSelectionMode) return;
                                     setAddMemberSearch('');
+                                    setAddMemberGroupFilter('Semua');
                                     setIsAddMemberModalOpen(true);
                                   }}
                                   className={`inline-flex items-center justify-center border h-8 w-8 rounded-xl text-xs font-bold transition-all shrink-0 ${
@@ -2333,6 +2379,26 @@ export default function LembagaKelasSub({
                               <option value="Proses">Proses</option>
                             </>
                           )}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 flex items-center">
+                          <ChevronDown className="h-4 w-4" />
+                        </div>
+                      </div>
+
+                      {/* Filter Kamar Select */}
+                      <div className="w-full sm:w-48 shrink-0 relative">
+                        <select
+                          value={kamarFilter}
+                          onChange={(e) => {
+                            setKamarFilter(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="w-full h-11 pl-4 pr-10 bg-slate-50 border border-slate-100/80 rounded-2xl text-xs font-bold text-slate-750 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-600/20 focus:border-[#00693E] appearance-none transition-all shadow-3xs cursor-pointer"
+                        >
+                          <option value="Semua">Semua Kamar</option>
+                          {availableKamarsInClass.map(kmr => (
+                            <option key={kmr} value={kmr}>Kamar {kmr}</option>
+                          ))}
                         </select>
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 flex items-center">
                           <ChevronDown className="h-4 w-4" />
@@ -3359,7 +3425,7 @@ export default function LembagaKelasSub({
                 {/* LEFT COLUMN: ELIGIBLE SANTRI */}
                 <div className="flex flex-col h-full overflow-hidden bg-white">
                   {/* Left Header & Search */}
-                  <div className="p-3.5 border-b border-slate-100 space-y-2.5 bg-slate-50/30 shrink-0">
+                  <div className="px-3 py-2 border-b border-slate-100 space-y-2 bg-slate-50/30 shrink-0">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                         Santri Tersedia
@@ -3381,62 +3447,246 @@ export default function LembagaKelasSub({
                       )}
                     </div>
 
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Cari nama atau NIS..."
-                        value={addMemberSearch}
-                        onChange={(e) => setAddMemberSearch(e.target.value)}
-                        className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all font-medium"
-                      />
-                      {addMemberSearch && (
-                        <button 
-                          type="button"
-                          onClick={() => setAddMemberSearch('')} 
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Cari nama atau NIS..."
+                          value={addMemberSearch}
+                          onChange={(e) => setAddMemberSearch(e.target.value)}
+                          className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 bg-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all font-medium"
+                        />
+                        {addMemberSearch && (
+                          <button 
+                            type="button"
+                            onClick={() => setAddMemberSearch('')} 
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="w-full sm:w-44 relative shrink-0">
+                        <select
+                          value={addMemberGroupFilter}
+                          onChange={(e) => setAddMemberGroupFilter(e.target.value)}
+                          className="w-full py-1.5 pl-2.5 pr-7 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 font-bold focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none appearance-none cursor-pointer truncate"
                         >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
+                          <option value="Semua">Semua Kelompok</option>
+                          <option value="Belum">Belum Tergabung</option>
+                          {groupsList
+                            .filter(g => {
+                              const catId = selectedLembaga?.id || (selectedKelas ? groupsList.find(x => x.id === selectedKelas.id)?.kategoriId : undefined);
+                              return g.kategoriId === catId && g.id !== selectedKelas?.id;
+                            })
+                            .map(g => (
+                              <option key={g.id} value={g.id}>{g.nama}</option>
+                            ))
+                          }
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                      </div>
                     </div>
                   </div>
 
                   {/* Left Scroll List */}
-                  <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-                    {searchedEligibleStudents.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center py-12 text-center text-slate-400 text-xs">
-                        <User className="h-8 w-8 text-slate-300 mb-2 stroke-[1.5]" />
-                        <p className="font-medium">{addMemberSearch ? 'Tidak ada santri yang cocok' : 'Tidak ada santri tersedia'}</p>
-                      </div>
-                    ) : (
-                      searchedEligibleStudents.map(student => (
-                        <div 
-                          key={student.id} 
-                          onClick={() => setSelectedModalStudentIds(prev => [...prev, student.id])}
-                          className="p-2.5 rounded-xl border border-slate-100 hover:border-emerald-200 bg-white hover:bg-emerald-50/30 flex items-center justify-between gap-3 text-xs transition-all cursor-pointer group"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {renderStudentAvatar(student)}
-                            <div className="min-w-0">
-                              <p className="font-semibold text-slate-800 truncate group-hover:text-emerald-900">{student.nama}</p>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">NIS: {student.nis || '-'} | Kamar: {student.kamar || '-'}</p>
-                            </div>
+                  <div className="flex-1 overflow-y-auto px-2.5 py-1.5 space-y-1.5">
+                    {(() => {
+                      if (searchedEligibleStudents.length === 0) {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center py-12 text-center text-slate-400 text-xs">
+                            <User className="h-8 w-8 text-slate-300 mb-2 stroke-[1.5]" />
+                            <p className="font-medium">{addMemberSearch ? 'Tidak ada santri yang cocok' : 'Tidak ada santri tersedia'}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedModalStudentIds(prev => [...prev, student.id]);
-                            }}
-                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors shrink-0 cursor-pointer"
-                            title="Pilih Santri"
+                        );
+                      }
+
+                      if (activeTab !== 'Rombel') {
+                        return searchedEligibleStudents.map(student => (
+                          <div 
+                            key={student.id} 
+                            onClick={() => setSelectedModalStudentIds(prev => [...prev, student.id])}
+                            className="p-2.5 rounded-xl border border-slate-100 hover:border-emerald-200 bg-white hover:bg-emerald-50/30 flex items-center justify-between gap-3 text-xs transition-all cursor-pointer group"
                           >
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))
-                    )}
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {renderStudentAvatar(student)}
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-800 truncate group-hover:text-emerald-900">{student.nama}</p>
+                                <p className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
+                                  {student.nis || '-'}
+                                  <span className="mx-1 text-slate-300">|</span>
+                                  {student.kamar || '-'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedModalStudentIds(prev => [...prev, student.id]);
+                              }}
+                              className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all shrink-0 cursor-pointer flex items-center justify-center border border-emerald-200/80 hover:border-emerald-600 shadow-3xs"
+                              title="Pilih Santri"
+                            >
+                              <Plus className="h-4 w-4 stroke-[2.5]" />
+                            </button>
+                          </div>
+                        ));
+                      }
+
+                      const catId = selectedLembaga?.id || (selectedKelas ? groupsList.find(g => g.id === selectedKelas.id)?.kategoriId : undefined);
+                      const categoryGroups = groupsList.filter(g => g.kategoriId === catId && g.id !== selectedKelas?.id);
+
+                      const sectionsMap: { [key: string]: { label: string; students: Santri[] } } = {
+                        'Belum': { label: 'Belum Tergabung', students: [] }
+                      };
+
+                      categoryGroups.forEach(g => {
+                        sectionsMap[g.id] = { label: g.nama, students: [] };
+                      });
+
+                      searchedEligibleStudents.forEach(s => {
+                        const ass = assignmentsList.find(a => 
+                          a.santriId === s.id && 
+                          (
+                            (catId && a.kategoriId === catId) || 
+                            groupsList.some(g => g.id === a.kelompokId && g.kategoriId === catId)
+                          )
+                        );
+                        if (!ass) {
+                          sectionsMap['Belum'].students.push(s);
+                        } else {
+                          if (sectionsMap[ass.kelompokId]) {
+                            sectionsMap[ass.kelompokId].students.push(s);
+                          } else {
+                            const foundGrp = groupsList.find(g => g.id === ass.kelompokId);
+                            if (foundGrp) {
+                              sectionsMap[ass.kelompokId] = { label: foundGrp.nama, students: [s] };
+                            } else {
+                              sectionsMap['Belum'].students.push(s);
+                            }
+                          }
+                        }
+                      });
+
+                      const activeSections = Object.entries(sectionsMap)
+                        .map(([key, data]) => ({ key, label: data.label, students: data.students }))
+                        .filter(sec => sec.students.length > 0);
+
+                      return activeSections.map(sec => {
+                        const isCollapsed = !!collapsedModalSections[sec.key];
+                        const isAllSectionSelected = sec.students.length > 0 && sec.students.every(s => selectedModalStudentIds.includes(s.id));
+
+                        return (
+                          <div key={`section-${sec.key}`} className="space-y-1">
+                            {/* Segment Header (Explorer VCS style) */}
+                            <div 
+                              onClick={() => {
+                                setCollapsedModalSections(prev => ({ ...prev, [sec.key]: !prev[sec.key] }));
+                              }}
+                              className="sticky top-0 z-10 px-2.5 py-1.5 bg-slate-100/95 backdrop-blur-xs border-y border-slate-200/90 rounded-lg flex items-center justify-between text-[11px] font-bold text-slate-700 shadow-2xs select-none cursor-pointer hover:bg-slate-200/80 transition-all"
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <div className="p-0.5 hover:bg-slate-200/80 rounded text-slate-500 transition-colors shrink-0">
+                                  {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                </div>
+                                <Folder className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                                <span className="uppercase tracking-wide truncate">{sec.label}</span>
+                                <span className="px-1.5 py-0.2 rounded-full bg-white text-slate-600 text-[10px] font-extrabold border border-slate-200 shrink-0">
+                                  {sec.students.length}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const sectionIds = sec.students.map(s => s.id);
+                                    if (isAllSectionSelected) {
+                                      setSelectedModalStudentIds(prev => prev.filter(id => !sectionIds.includes(id)));
+                                    } else {
+                                      setSelectedModalStudentIds(prev => Array.from(new Set([...prev, ...sectionIds])));
+                                    }
+                                  }}
+                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 active:scale-95 ${
+                                    isAllSectionSelected
+                                      ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                                      : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 hover:border-emerald-400'
+                                  }`}
+                                  title={isAllSectionSelected ? "Batal pilih semua di kelompok ini" : "Pilih semua di kelompok ini"}
+                                >
+                                  {isAllSectionSelected ? (
+                                    <>
+                                      <CheckSquare className="h-3 w-3 stroke-[2.5]" />
+                                      <span>Terpilih Semua</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className="h-3 w-3 stroke-[2.5]" />
+                                      <span>Tambahkan Semua</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {!isCollapsed && sec.students.map(student => {
+                              const isChecked = selectedModalStudentIds.includes(student.id);
+                              return (
+                                <div 
+                                  key={student.id} 
+                                  onClick={() => setSelectedModalStudentIds(prev => prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id])}
+                                  className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 text-xs ${
+                                    isChecked
+                                      ? 'border-emerald-200 bg-emerald-50/10 shadow-xs'
+                                      : 'border-slate-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className={`h-4 w-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                                      isChecked
+                                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                                        : 'border-slate-300 bg-white'
+                                    }`}>
+                                      {isChecked && <CheckSquare className="h-2.5 w-2.5 stroke-[3px]" />}
+                                    </div>
+                                    {renderStudentAvatar(student)}
+                                    <div className="min-w-0">
+                                      <p className="font-semibold text-slate-800 truncate group-hover:text-emerald-900">{student.nama}</p>
+                                      <p className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
+                                        {student.nis || '-'}
+                                        <span className="mx-1 text-slate-300">|</span>
+                                        {student.kamar || '-'}
+                                        <span className="mx-1 text-slate-300">|</span>
+                                        <span className={sec.key !== 'Belum' ? 'text-amber-700 font-bold' : 'text-slate-400 font-normal'}>
+                                          {sec.label}
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedModalStudentIds(prev => prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]);
+                                    }}
+                                    className={`h-8 w-8 rounded-lg transition-all shrink-0 cursor-pointer flex items-center justify-center border shadow-3xs ${
+                                      isChecked
+                                        ? 'bg-emerald-600 text-white border-emerald-600'
+                                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white border-emerald-200/80 hover:border-emerald-600'
+                                    }`}
+                                    title="Pilih Santri"
+                                  >
+                                    <Plus className="h-4 w-4 stroke-[2.5]" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
 
@@ -3479,7 +3729,32 @@ export default function LembagaKelasSub({
                             {renderStudentAvatar(student)}
                             <div className="min-w-0">
                               <p className="font-semibold text-slate-800 truncate">{student.nama}</p>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">NIS: {student.nis || '-'} | Kamar: {student.kamar || '-'}</p>
+                              <p className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
+                                {student.nis || '-'}
+                                <span className="mx-1 text-slate-300">|</span>
+                                {student.kamar || '-'}
+                                {activeTab === 'Rombel' && (
+                                  <>
+                                    <span className="mx-1 text-slate-300">|</span>
+                                    {(() => {
+                                      const catId = selectedLembaga?.id || (selectedKelas ? groupsList.find(g => g.id === selectedKelas.id)?.kategoriId : undefined);
+                                      const ass = assignmentsList.find(a => 
+                                        a.santriId === student.id && 
+                                        (
+                                          (catId && a.kategoriId === catId) || 
+                                          groupsList.some(g => g.id === a.kelompokId && g.kategoriId === catId)
+                                        )
+                                      );
+                                      const groupName = ass ? groupsList.find(g => g.id === ass.kelompokId)?.nama : null;
+                                      return (
+                                        <span className={groupName ? 'text-amber-700 font-bold' : 'text-slate-400 font-normal'}>
+                                          {groupName || 'Belum tergabung'}
+                                        </span>
+                                      );
+                                    })()}
+                                  </>
+                                )}
+                              </p>
                             </div>
                           </div>
                           <button
@@ -3525,7 +3800,7 @@ export default function LembagaKelasSub({
                     className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:hover:bg-emerald-600 shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                   >
                     <Check className="h-4 w-4" />
-                    <span>Konfirmasi Penambahan ({selectedStudentsForModal.length})</span>
+                    <span>Tambahkan ({selectedStudentsForModal.length})</span>
                   </button>
                 </div>
               </div>

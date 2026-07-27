@@ -1,6 +1,7 @@
 import express from "express";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import path from "path";
 
 dotenv.config();
 
@@ -55,6 +56,26 @@ app.get("/api/supabase-status", (req, res) => {
     url: url || null,
     anonKey: anonKey,
     reason: isReady ? "connected" : "missing_keys"
+  });
+});
+
+// Download SQL Schema for Hostinger MySQL
+app.get("/api/download-sql-mysql", (req, res) => {
+  const filePath = path.join(process.cwd(), "hostinger_mysql_setup.sql");
+  res.download(filePath, "hostinger_mysql_setup.sql", (err) => {
+    if (err) {
+      res.status(500).send("Gagal mengunduh skema SQL MySQL Hostinger");
+    }
+  });
+});
+
+// Download SQL Schema for Supabase PostgreSQL
+app.get("/api/download-sql-supabase", (req, res) => {
+  const filePath = path.join(process.cwd(), "supabase_setup.sql");
+  res.download(filePath, "supabase_setup.sql", (err) => {
+    if (err) {
+      res.status(500).send("Gagal mengunduh skema SQL Supabase");
+    }
   });
 });
 
