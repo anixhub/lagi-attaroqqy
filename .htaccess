@@ -1,0 +1,7 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # If accessing directly from project root, redirect/rewrite traffic into dist folder
+  RewriteCond %{REQUEST_URI} !/dist/ [NC]
+  RewriteRule ^(.*)$ dist/$1 [L]
+</IfModule>
