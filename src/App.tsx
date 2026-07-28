@@ -51,7 +51,7 @@ export default function App() {
     
     // Background sync on app load to ensure permissions are always up to date in real-time
     fetchAndSyncPermissionsFromSupabase().catch(err => {
-      console.warn("Gagal sinkronisasi hak akses background dari Supabase:", err);
+      console.warn("Gagal sinkronisasi hak akses background dari Database:", err);
     });
   }, []);
 

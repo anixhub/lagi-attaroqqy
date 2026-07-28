@@ -1,17 +1,23 @@
 # ==============================================================================
 # HTACCESS AKAR (PROJECT ROOT UNTUK REWRITE KE DIST ATAU PUBLIC)
 # ==============================================================================
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+  AddType application/json .json
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
 
   # Direct API requests if dist/api/index.php exists
-  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteCond %{REQUEST_URI} api/ [NC]
   RewriteCond %{DOCUMENT_ROOT}/dist/api/index.php -f
   RewriteRule ^api/(.*)$ dist/api/index.php [QSA,L]
 
   # Direct API requests if api/index.php exists at root
-  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteCond %{REQUEST_URI} api/ [NC]
   RewriteCond %{DOCUMENT_ROOT}/api/index.php -f
   RewriteRule ^api/(.*)$ api/index.php [QSA,L]
 

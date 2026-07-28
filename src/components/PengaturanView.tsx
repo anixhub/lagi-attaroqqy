@@ -1699,13 +1699,13 @@ export default function PengaturanView({
         setPersistedRoles(roles);
         setToastData({
           title: 'Berhasil Disimpan!',
-          desc: 'Konfigurasi hak akses telah diperbarui di lokal dan disinkronkan ke Supabase.'
+          desc: 'Konfigurasi hak akses telah diperbarui di lokal dan disinkronkan ke Database Hostinger MySQL.'
         });
       } catch (err: any) {
-        console.error("Gagal sinkronisasi hak akses ke Supabase:", err);
+        console.error("Gagal sinkronisasi hak akses ke Database Hostinger:", err);
         setToastData({
           title: 'Sinkronisasi Gagal',
-          desc: `Konfigurasi tersimpan lokal, namun gagal sinkronisasi ke Supabase: ${err.message || err}`
+          desc: `Konfigurasi tersimpan lokal, namun gagal sinkronisasi ke Database Hostinger: ${err.message || err}`
         });
       }
       setShowToast(true);

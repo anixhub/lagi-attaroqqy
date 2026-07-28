@@ -186,26 +186,25 @@ import { getApiUrl } from './api';
 
 export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole[]> {
   try {
-    const statusRes = await fetch(getApiUrl("/api/supabase-status"));
-    if (!statusRes.ok) return DEFAULT_ROLES;
+    const statusRes = await fetch(getApiUrl("/api/supabase-status")).catch(() => null);
+    if (!statusRes || !statusRes.ok) return DEFAULT_ROLES;
     
     let status;
     try {
       status = await statusRes.json();
     } catch (e) {
-      console.warn("Gagal parse status JSON, kemungkinan server sedang restart:", e);
       return DEFAULT_ROLES;
     }
     
-    if (!status.connected) return DEFAULT_ROLES;
+    if (!status || !status.connected) return DEFAULT_ROLES;
 
     const [rolesRes, permsRes, rolePermsRes] = await Promise.all([
-      fetch(getApiUrl("/api/db/roles")),
-      fetch(getApiUrl("/api/db/permissions")),
-      fetch(getApiUrl("/api/db/role_has_permissions"))
+      fetch(getApiUrl("/api/db/roles")).catch(() => null),
+      fetch(getApiUrl("/api/db/permissions")).catch(() => null),
+      fetch(getApiUrl("/api/db/role_has_permissions")).catch(() => null)
     ]);
 
-    if (!rolesRes.ok || !permsRes.ok || !rolePermsRes.ok) {
+    if (!rolesRes || !permsRes || !rolePermsRes || !rolesRes.ok || !permsRes.ok || !rolePermsRes.ok) {
       return DEFAULT_ROLES;
     }
 
@@ -215,11 +214,10 @@ export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole
       permsData = await permsRes.json();
       rolePermsData = await rolePermsRes.json();
     } catch (e) {
-      console.warn("Gagal parse data JSON, kemungkinan server sedang restart:", e);
       return DEFAULT_ROLES;
     }
 
-    if (!rolesData.success || !permsData.success || !rolePermsData.success) {
+    if (!rolesData?.success || !permsData?.success || !rolePermsData?.success) {
       return DEFAULT_ROLES;
     }
 
@@ -268,8 +266,10 @@ export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole
     localStorage.setItem('smartsantri_roles_permissions', JSON.stringify(updatedRoles));
     return updatedRoles;
   } catch (error) {
-    console.error("Gagal sinkronisasi hak akses dari Supabase:", error);
+    console.warn("Sinkronisasi hak akses menggunakan konfigurasi default:", error);
     return DEFAULT_ROLES;
   }
 }
+
+export const fetchAndSyncPermissionsFromDatabase = fetchAndSyncPermissionsFromSupabase;
 
