@@ -1,9 +1,9 @@
 const CACHE_NAME = 'attarokey-pwa-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/logo.svg',
-  '/manifest.json'
+  './',
+  './index.html',
+  './logo.svg',
+  './manifest.json'
 ];
 
 // Install Event: Cache essential assets
