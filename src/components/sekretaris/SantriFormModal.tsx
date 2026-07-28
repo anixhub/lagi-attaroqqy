@@ -73,7 +73,7 @@ const PEKERJAAN_OPTIONS = [
   { id: "Pedagang", name: "Pedagang" }
 ];
 
-const compressImageAndGetBase64 = (file: File, maxWidth = 320, maxHeight = 400, quality = 0.7): Promise<string> => {
+const compressImageAndGetBase64 = (file: File, maxWidth = 2048, maxHeight = 2048, quality = 0.88): Promise<string> => {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       const reader = new FileReader();
@@ -2361,7 +2361,7 @@ export default function SantriFormModal({
                                 if (e.target.files && e.target.files[0]) {
                                   const file = e.target.files[0];
                                   setIsCompressing(prev => ({ ...prev, filePasFoto: true }));
-                                  compressImageAndGetBase64(file, 240, 320, 0.7) // Standard Pas Foto 3x4 ratio in small dimensions
+                                  compressImageAndGetBase64(file, 800, 1066, 0.85) // High-Definition Pas Foto 3x4 ratio
                                     .then(async (base64) => {
                                       const publicUrl = await uploadFileToStorage(base64, file.name, 'filePasFoto');
                                       setForm(f => ({ ...f, filePasFoto: publicUrl }));

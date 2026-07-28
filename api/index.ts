@@ -38,6 +38,10 @@ app.use((req, res, next) => {
 // Enable JSON parsing with a 10MB limit for compressed base64 photos
 app.use(express.json({ limit: "10mb" }));
 
+// Serve static uploads
+app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
+app.use("/uploads", express.static(path.join(process.cwd(), "dist", "uploads")));
+
 // -------------------------------------------------------------
 // 1. MySQL Pool & Memory Store (Fallback) Initialization
 // -------------------------------------------------------------
@@ -315,11 +319,11 @@ app.post("/api/upload", async (req, res) => {
     fs.writeFileSync(path.join(publicDir, fileName), buffer);
     fs.writeFileSync(path.join(distDir, fileName), buffer);
 
-    const publicUrl = `uploads/${fileName}`;
+    const publicUrl = `/uploads/${fileName}`;
 
     res.json({
       success: true,
-      path: `uploads/${fileName}`,
+      path: publicUrl,
       publicUrl: publicUrl
     });
   } catch (err: any) {

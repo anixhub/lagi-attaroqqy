@@ -277,7 +277,7 @@ export function demoteSantriToCalonPesertaDidik(
   };
 }
 
-export function compressImage(file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> {
+export function compressImage(file: File, maxWidth = 2048, maxHeight = 2048, quality = 0.88): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       const reader = new FileReader();
@@ -328,4 +328,25 @@ export function compressImage(file: File, maxWidth = 800, maxHeight = 800, quali
     reader.onerror = (error) => reject(error);
     reader.readAsDataURL(file);
   });
+}
+
+export function hasValidRoom(kamarStr?: string | null): boolean {
+  if (!kamarStr) return false;
+  const clean = kamarStr.trim().toLowerCase();
+  if (
+    clean === '' ||
+    clean === '-' ||
+    clean === 'tanpa kamar' ||
+    clean === 'belum ada' ||
+    clean === 'belum ada kamar' ||
+    clean === 'belum dapat' ||
+    clean === 'belum dapat kamar' ||
+    clean === 'belum diatur' ||
+    clean === 'belum diatur kamar' ||
+    clean === 'tidak ada' ||
+    clean === 'non-asrama'
+  ) {
+    return false;
+  }
+  return true;
 }

@@ -116,6 +116,26 @@ export default function PendidikanView({
     return defaultGender;
   });
   
+  // Helper to parse TA_META from Lembaga description
+  const deserializeLembaga = (l: Lembaga): Lembaga => {
+    if (!l) return l;
+    const copy = { ...l };
+    if (copy.deskripsi) {
+      const match = copy.deskripsi.match(/\[TA_META:(.*?)\]/);
+      if (match) {
+        try {
+          const meta = JSON.parse(match[1]);
+          if (copy.taMulaiTanggal === undefined && meta.taMulaiTanggal !== undefined) copy.taMulaiTanggal = meta.taMulaiTanggal;
+          if (copy.taMulaiBulan === undefined && meta.taMulaiBulan !== undefined) copy.taMulaiBulan = meta.taMulaiBulan;
+          if (copy.taSelesaiTanggal === undefined && meta.taSelesaiTanggal !== undefined) copy.taSelesaiTanggal = meta.taSelesaiTanggal;
+          if (copy.taSelesaiBulan === undefined && meta.taSelesaiBulan !== undefined) copy.taSelesaiBulan = meta.taSelesaiBulan;
+        } catch (e) {}
+      }
+      copy.deskripsi = copy.deskripsi.replace(/\[TA_META:.*?\]/g, "").trim();
+    }
+    return copy;
+  };
+
   // --- PERSISTENT DATA STATE MANAGERS ---
   const [lembagasList, setLembagasList] = useState<Lembaga[]>(() => {
     let raw: Lembaga[] = INITIAL_LEMBAGA;
@@ -140,25 +160,7 @@ export default function PendidikanView({
       return l;
     });
 
-    const parsedLems = sanitized.map(l => {
-      if (l && l.deskripsi) {
-        const match = l.deskripsi.match(/\[TA_META:(.*?)\]/);
-        if (match) {
-          try {
-            const meta = JSON.parse(match[1]);
-            return {
-              ...l,
-              taMulaiTanggal: l.taMulaiTanggal !== undefined ? l.taMulaiTanggal : meta.taMulaiTanggal,
-              taMulaiBulan: l.taMulaiBulan !== undefined ? l.taMulaiBulan : meta.taMulaiBulan,
-              taSelesaiTanggal: l.taSelesaiTanggal !== undefined ? l.taSelesaiTanggal : meta.taSelesaiTanggal,
-              taSelesaiBulan: l.taSelesaiBulan !== undefined ? l.taSelesaiBulan : meta.taSelesaiBulan,
-              deskripsi: l.deskripsi.replace(/\[TA_META:.*?\]/g, "").trim()
-            };
-          } catch (e) {}
-        }
-      }
-      return l;
-    });
+    const parsedLems = sanitized.map(deserializeLembaga);
 
     if (hasDuplicates) {
       localStorage.setItem('smartsantri_lembagas', JSON.stringify(parsedLems));
@@ -283,31 +285,15 @@ export default function PendidikanView({
   useEffect(() => {
     let isMounted = true;
 
-    const loadEducationData = async () => {
+    const loadEducationData = async (showLoading = false) => {
       try {
-        setIsInitialLoading(true);
+        if (showLoading) {
+          setIsInitialLoading(true);
+        }
         const lemData = await fetchTableData<Lembaga>('lembaga', 'smartsantri_lembagas', INITIAL_LEMBAGA);
         const uniqueLems = lemData.filter((item, idx, arr) => arr.findIndex(x => x.id === item.id) === idx);
         
-        const processedLems = uniqueLems.map(l => {
-          if (l.deskripsi) {
-            const match = l.deskripsi.match(/\[TA_META:(.*?)\]/);
-            if (match) {
-              try {
-                const meta = JSON.parse(match[1]);
-                return {
-                  ...l,
-                  taMulaiTanggal: l.taMulaiTanggal !== undefined ? l.taMulaiTanggal : meta.taMulaiTanggal,
-                  taMulaiBulan: l.taMulaiBulan !== undefined ? l.taMulaiBulan : meta.taMulaiBulan,
-                  taSelesaiTanggal: l.taSelesaiTanggal !== undefined ? l.taSelesaiTanggal : meta.taSelesaiTanggal,
-                  taSelesaiBulan: l.taSelesaiBulan !== undefined ? l.taSelesaiBulan : meta.taSelesaiBulan,
-                  deskripsi: l.deskripsi.replace(/\[TA_META:.*?\]/g, "").trim()
-                };
-              } catch (e) {}
-            }
-          }
-          return l;
-        });
+        const processedLems = uniqueLems.map(deserializeLembaga);
 
         if (isMounted) setLembagasList(processedLems);
 
@@ -410,7 +396,7 @@ export default function PendidikanView({
       }
     };
 
-    loadEducationData();
+    loadEducationData(true);
 
     // Subscribe to WebSocket realtime changes from server
     const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
@@ -451,7 +437,8 @@ export default function PendidikanView({
             if (payload.action === 'delete' && payload.id) {
               setLembagasList(prev => prev.filter(l => l.id !== payload.id));
             } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
-              const camelLem = snakeToCamel(payload.data) as Lembaga;
+              const rawLem = snakeToCamel(payload.data) as Lembaga;
+              const camelLem = deserializeLembaga(rawLem);
               setLembagasList(prev => {
                 const idx = prev.findIndex(l => l.id === camelLem.id);
                 if (idx >= 0) {
@@ -463,7 +450,7 @@ export default function PendidikanView({
               });
             }
           } else if (payload.action === 'truncate_all' || !payload.data) {
-            loadEducationData();
+            loadEducationData(false);
           }
         }
       }
@@ -472,7 +459,7 @@ export default function PendidikanView({
     // Re-fetch immediately when screen/tab regains focus or visibility
     const handleFocusOrVisibility = () => {
       if (document.visibilityState === 'visible') {
-        loadEducationData();
+        loadEducationData(false);
       }
     };
     window.addEventListener('focus', handleFocusOrVisibility);
@@ -511,18 +498,11 @@ export default function PendidikanView({
   // --- ACADEMIC STATE HANDLERS ---
   // 1. LEMBAGA CALLBACKS
   const handleAddLembaga = async (newLem: Lembaga) => {
-    const meta = {
-      taMulaiTanggal: newLem.taMulaiTanggal,
-      taMulaiBulan: newLem.taMulaiBulan,
-      taSelesaiTanggal: newLem.taSelesaiTanggal,
-      taSelesaiBulan: newLem.taSelesaiBulan
-    };
     const cleanDeskripsi = (newLem.deskripsi || "").replace(/\[TA_META:.*?\]/g, "").trim();
-    const serializedDeskripsi = `${cleanDeskripsi}\n\n[TA_META:${JSON.stringify(meta)}]`.trim();
     
     const dbPayload = {
       ...newLem,
-      deskripsi: serializedDeskripsi
+      deskripsi: cleanDeskripsi
     };
 
     const saved = await insertTableRow('lembaga', 'smartsantri_lembagas', dbPayload);
@@ -544,18 +524,11 @@ export default function PendidikanView({
   };
 
   const handleUpdateLembaga = async (upLem: Lembaga) => {
-    const meta = {
-      taMulaiTanggal: upLem.taMulaiTanggal,
-      taMulaiBulan: upLem.taMulaiBulan,
-      taSelesaiTanggal: upLem.taSelesaiTanggal,
-      taSelesaiBulan: upLem.taSelesaiBulan
-    };
     const cleanDeskripsi = (upLem.deskripsi || "").replace(/\[TA_META:.*?\]/g, "").trim();
-    const serializedDeskripsi = `${cleanDeskripsi}\n\n[TA_META:${JSON.stringify(meta)}]`.trim();
 
     const dbPayload = {
       ...upLem,
-      deskripsi: serializedDeskripsi
+      deskripsi: cleanDeskripsi
     };
 
     setLembagasList(prev => prev.map(l => l.id === upLem.id ? { ...upLem, deskripsi: cleanDeskripsi } : l));

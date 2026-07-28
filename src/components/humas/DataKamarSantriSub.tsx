@@ -24,6 +24,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { Santri, Kompleks, Kamar, Lembaga, Kelas } from '../../types';
+import { hasValidRoom } from '../../lib/utils';
 import { renderSantriAvatar, getPesantrenProfile } from '../SekretarisHelper';
 import SantriDetailModal from '../sekretaris/SantriDetailModal';
 
@@ -140,6 +141,82 @@ export default function DataKamarSantriSub({
   // Detail Modal State
   const [selectedSantri, setSelectedSantri] = useState<Santri | null>(null);
 
+  // Floating Table Header & Horizontal Scroll Navigation States
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [stickyTop, setStickyTop] = useState(64);
+  const [floatingHeaderStyle, setFloatingHeaderStyle] = useState({ left: 0, width: 0 });
+
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const floatingHeaderRef = React.useRef<HTMLDivElement>(null);
+  const floatingHeaderOuterRef = React.useRef<HTMLDivElement>(null);
+  const scrollSourceRef = React.useRef<'main' | 'floating' | null>(null);
+  const scrollTimeoutRef = React.useRef<number | null>(null);
+
+  const updateScrollButtons = () => {
+    const container = containerRef.current;
+    if (container) {
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      const hasHorizontalScroll = scrollWidth > clientWidth + 4;
+      setCanScrollLeft(hasHorizontalScroll && scrollLeft > 2);
+      setCanScrollRight(hasHorizontalScroll && scrollLeft + clientWidth < scrollWidth - 2);
+    }
+  };
+
+  const scrollTable = (direction: 'left' | 'right') => {
+    const container = containerRef.current;
+    if (container) {
+      scrollSourceRef.current = 'main';
+      const scrollAmount = 300;
+      const targetScroll = direction === 'left' 
+        ? container.scrollLeft - scrollAmount 
+        : container.scrollLeft + scrollAmount;
+      
+      container.scrollTo({
+        left: targetScroll,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleTableScroll = () => {
+    updateScrollButtons();
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (scrollSourceRef.current !== 'floating') {
+      scrollSourceRef.current = 'main';
+      if (scrollTimeoutRef.current) {
+        window.clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = window.setTimeout(() => {
+        scrollSourceRef.current = null;
+      }, 150);
+
+      if (floatingHeaderRef.current && floatingHeaderRef.current.scrollLeft !== container.scrollLeft) {
+        floatingHeaderRef.current.scrollLeft = container.scrollLeft;
+      }
+    }
+
+    const mainHeader = document.querySelector('header');
+    const mainHeaderHeight = mainHeader ? (mainHeader as HTMLElement).offsetHeight : 64;
+    const computedStickyTop = mainHeaderHeight;
+
+    setStickyTop(computedStickyTop);
+
+    const containerRect = container.getBoundingClientRect();
+    const isHeaderFloating = 
+      containerRect.top <= computedStickyTop && 
+      containerRect.bottom > (computedStickyTop + 48);
+    setIsScrolled(isHeaderFloating);
+
+    setFloatingHeaderStyle({
+      left: containerRect.left,
+      width: containerRect.width,
+    });
+  };
+
   // Reset page and selection when search, gender, or filters change
   useEffect(() => {
     setCurrentPage(1);
@@ -155,9 +232,52 @@ export default function DataKamarSantriSub({
     }
   }, [toast]);
 
+  // Recalculate horizontal scroll buttons and scroll stickiness on layout changes
+  useEffect(() => {
+    updateScrollButtons();
+    const timer = setTimeout(() => {
+      updateScrollButtons();
+      handleTableScroll();
+    }, 100);
+
+    const handleResize = () => {
+      updateScrollButtons();
+      handleTableScroll();
+    };
+
+    const handleGlobalScroll = () => {
+      handleTableScroll();
+    };
+
+    window.addEventListener('resize', handleResize, { passive: true });
+    document.addEventListener('scroll', handleGlobalScroll, { capture: true, passive: true });
+
+    let observer: ResizeObserver | null = null;
+    const container = containerRef.current;
+    if (container) {
+      observer = new ResizeObserver(() => {
+        updateScrollButtons();
+      });
+      observer.observe(container);
+      const table = container.querySelector('table');
+      if (table) {
+        observer.observe(table);
+      }
+    }
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('scroll', handleGlobalScroll, { capture: true });
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, [searchQuery, genderFilter, kamarStatusFilter, kompleksFilter, kamarFilter, currentPage, pageSize, isSelectionMode]);
+
   // Format Room: complex name + room name
   const getKamarFormat = (s: Santri) => {
-    if (!s.kamar || s.kamar.trim() === '' || s.kamar.toLowerCase() === 'belum ada' || s.kamar.toLowerCase() === 'belum dapat') {
+    if (!hasValidRoom(s.kamar)) {
       return null;
     }
     
@@ -195,8 +315,8 @@ export default function DataKamarSantriSub({
 
   // Filter students based on search and selected filters
   const filteredSantri = santriList.filter(s => {
-    // 0. Filter out Alumni and Kampung (Non-Asrama)
-    if (s.statusKeanggotaan === 'Alumni' || s.statusDomisili === 'Kampung') {
+    // 0. Filter out Alumni
+    if (s.statusKeanggotaan === 'Alumni') {
       return false;
     }
 
@@ -217,7 +337,7 @@ export default function DataKamarSantriSub({
     if (!matchesSearch) return false;
 
     // 3. Status Tergabung Kamar Filter
-    const hasRoom = s.kamar && s.kamar.trim() !== '' && s.kamar.toLowerCase() !== 'belum ada' && s.kamar.toLowerCase() !== 'belum dapat';
+    const hasRoom = hasValidRoom(s.kamar);
     if (kamarStatusFilter === 'sudah' && !hasRoom) {
       return false;
     }
@@ -229,7 +349,7 @@ export default function DataKamarSantriSub({
     if (kamarStatusFilter !== 'belum') {
       // 4. Kompleks Filter
       if (kompleksFilter !== 'semua') {
-        if (!s.kamar) return false;
+        if (!hasValidRoom(s.kamar)) return false;
         const matchingKamar = kamarList.find(r => r.nama && s.kamar && r.nama.toLowerCase() === s.kamar.toLowerCase());
         if (!matchingKamar || matchingKamar.kompleksId !== kompleksFilter) {
           return false;
@@ -238,7 +358,7 @@ export default function DataKamarSantriSub({
 
       // 5. Kamar Filter
       if (kamarFilter !== 'semua') {
-        if (!s.kamar || s.kamar.toLowerCase() !== kamarFilter.toLowerCase()) {
+        if (!hasValidRoom(s.kamar) || (s.kamar || '').toLowerCase() !== kamarFilter.toLowerCase()) {
           return false;
         }
       }
@@ -280,12 +400,11 @@ export default function DataKamarSantriSub({
   const endIndex = Math.min(startIndex + pageSize, totalItems);
   const paginatedSantri = sortedSantri.slice(startIndex, endIndex);
 
-  // Count unassigned students for the current gender Filter (excluding Alumni and Kampung)
+  // Count unassigned students for the current gender Filter (excluding Alumni)
   const unassignedSantriCount = santriList.filter(s => 
     s.gender === genderFilter && 
     s.statusKeanggotaan !== 'Alumni' && 
-    s.statusDomisili !== 'Kampung' &&
-    (!s.kamar || s.kamar.trim() === '' || s.kamar.toLowerCase() === 'belum ada' || s.kamar.toLowerCase() === 'belum dapat')
+    !hasValidRoom(s.kamar)
   ).length;
 
   // Excel Export Handler (XML Format compatible with Excel)
@@ -623,7 +742,7 @@ export default function DataKamarSantriSub({
     setActionMenuCoords(null);
   };
 
-  const renderSortHeader = (key: string, label: string, isSticky: boolean = false, extraClasses: string = '') => {
+  const renderSortHeader = (key: string, label: string, isSticky: boolean = false, extraClasses: string = '', headerClass: string = '') => {
     const isSorted = sortKey === key;
     return (
       <th 
@@ -635,10 +754,10 @@ export default function DataKamarSantriSub({
             setSortDirection('asc');
           }
         }}
-        className={`px-6 py-4 cursor-pointer transition-all select-none font-display text-xs font-bold uppercase tracking-wider hover:bg-slate-100 ${
+        className={`px-6 py-4 cursor-pointer transition-all select-none font-display text-xs font-bold uppercase tracking-wider relative hover:bg-slate-100 ${
           isSticky 
-            ? `static sm:sticky bg-slate-50 hover:bg-slate-100 z-20 ${extraClasses}` 
-            : 'bg-slate-50 hover:bg-slate-100 text-slate-400'
+            ? `static sm:sticky z-20 ${extraClasses} ${headerClass}` 
+            : `text-slate-400 ${headerClass}`
         }`}
       >
         <div className="flex items-center gap-1.5 justify-start">
@@ -653,7 +772,100 @@ export default function DataKamarSantriSub({
             <ArrowUpDown className="h-3 w-3 text-slate-300 hover:text-slate-500 shrink-0" />
           )}
         </div>
+
+        {/* Scroll Left Button placed exactly on right side of 'nama' header column */}
+        {key === 'nama' && canScrollLeft && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollTable('left');
+            }}
+            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-[40] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-all duration-200 hover:bg-slate-50 hover:scale-105 active:scale-95 cursor-pointer opacity-100"
+            title="Gulir Kiri"
+          >
+            <ChevronLeft className="h-4 w-4 stroke-[2.5] -translate-x-[0.5px]" />
+          </button>
+        )}
       </th>
+    );
+  };
+
+  const renderTableHeadContents = (headerClass: string) => (
+    <tr>
+      {/* Sticky Checklist Column */}
+      {isSelectionMode && (
+        <th className={`px-3 py-4 text-center sticky left-0 z-30 border-r border-slate-100 w-12 min-w-[48px] ${headerClass}`}>
+          <div className="flex items-center justify-center">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+              checked={paginatedSantri.length > 0 && paginatedSantri.every(s => selectedSantriIds.includes(s.id))}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  const newIds = [...selectedSantriIds];
+                  paginatedSantri.forEach(s => {
+                    if (!newIds.includes(s.id)) {
+                      newIds.push(s.id);
+                    }
+                  });
+                  setSelectedSantriIds(newIds);
+                } else {
+                  const paginatedIds = paginatedSantri.map(s => s.id);
+                  setSelectedSantriIds(selectedSantriIds.filter(id => !paginatedIds.includes(id)));
+                }
+              }}
+            />
+          </div>
+        </th>
+      )}
+
+      {/* Sticky No Column */}
+      <th className={`px-4 py-4 static sm:sticky ${
+        isSelectionMode ? 'sm:left-12' : 'sm:left-0'
+      } z-20 sm:shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-slate-100 text-center w-16 min-w-[64px] font-display text-xs font-bold uppercase tracking-wider ${headerClass}`}>
+        No.
+      </th>
+
+      {/* Sticky Nama Lengkap Column */}
+      {renderSortHeader(
+        'nama', 
+        'Nama Lengkap', 
+        true, 
+        isSelectionMode ? 'sm:left-28 sm:shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-slate-100 min-w-[240px]' : 'sm:left-16 sm:shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-slate-100 min-w-[240px]',
+        headerClass
+      )}
+
+      {/* Rest of non-sticky columns */}
+      {renderSortHeader('nis', 'NIS', false, '', headerClass)}
+      {renderSortHeader('alamat', 'Alamat', false, '', headerClass)}
+      {renderSortHeader('kamar', 'Kamar', false, '', headerClass)}
+      {renderSortHeader('nomorLemari', 'No. Lemari', false, '', headerClass)}
+
+      {/* Sticky Aksi Column - On the right side */}
+      <th className={`px-2 py-4 text-center w-12 font-display text-xs font-bold uppercase tracking-wider sticky right-0 z-30 shadow-[-2px_0_5px_rgba(0,0,0,0.05)] border-l border-slate-100 ${headerClass}`}>
+        Aksi
+      </th>
+    </tr>
+  );
+
+  const renderScrollButtons = (isFloating: boolean) => {
+    if (!canScrollRight) return null;
+    return (
+      <button
+        id={isFloating ? "table-scroll-right-btn-floating" : "table-scroll-right-btn"}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          scrollTable('right');
+        }}
+        className={`absolute right-0 translate-x-1/2 ${
+          isFloating ? 'top-1/2 -translate-y-1/2' : 'top-[26px] -translate-y-1/2'
+        } z-[100] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-all duration-200 hover:bg-slate-50 hover:scale-105 active:scale-95 cursor-pointer opacity-100`}
+        title="Gulir Kanan"
+      >
+        <ChevronRight className="h-4 w-4 stroke-[2.5] translate-x-[0.5px]" />
+      </button>
     );
   };
 
@@ -686,41 +898,55 @@ export default function DataKamarSantriSub({
       </AnimatePresence>
       
       {/* Header with Title */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-2">
-        <div>
-          <h1 className="font-display text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-            <span>Data Kamar Santri</span>
-            <span 
-              onClick={() => {
-                if (isSelectionMode) return;
-                if (canViewPutra && canViewPutri) {
-                  setGenderFilter(genderFilter === 'Putra' ? 'Putri' : 'Putra');
-                  setSelectedSantriIds([]);
-                  setIsSelectionMode(false);
+      <div className="bg-slate-50/60 -mx-4 px-4 py-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8 space-y-4 border-b border-slate-200/50 mb-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl flex flex-wrap items-center gap-x-2">
+              <span>Data Kamar</span>
+              <span 
+                onClick={() => {
+                  if (isSelectionMode) return;
+                  if (canViewPutra && canViewPutri) {
+                    setGenderFilter(genderFilter === 'Putra' ? 'Putri' : 'Putra');
+                    setSelectedSantriIds([]);
+                    setIsSelectionMode(false);
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 transition-all duration-200 select-none ${
+                  isSelectionMode 
+                    ? 'opacity-80 cursor-not-allowed text-slate-500'
+                    : canViewPutra && canViewPutri
+                    ? 'cursor-pointer active:scale-95'
+                    : 'cursor-default'
+                } ${
+                  !isSelectionMode && genderFilter === 'Putra' 
+                    ? 'text-indigo-600 hover:text-indigo-700' 
+                    : !isSelectionMode && genderFilter === 'Putri'
+                    ? 'text-rose-600 hover:text-rose-700'
+                    : 'text-emerald-600'
+                }`}
+                title={
+                  isSelectionMode 
+                    ? "Matikan mode pilih untuk mengubah gender" 
+                    : canViewPutra && canViewPutri 
+                    ? "Klik untuk mengubah filter gender (Santri Putra ⇄ Santri Putri)" 
+                    : undefined
                 }
-              }}
-              className={`inline-flex items-center gap-1.5 transition-all duration-200 select-none ${
-                isSelectionMode 
-                  ? 'opacity-40 cursor-not-allowed text-slate-400'
-                  : canViewPutra && canViewPutri
-                  ? 'cursor-pointer active:scale-95'
-                  : 'cursor-default'
-              } ${
-                !isSelectionMode && genderFilter === 'Putra' 
-                  ? 'text-blue-600 hover:text-blue-700' 
-                  : !isSelectionMode && genderFilter === 'Putri'
-                  ? 'text-rose-600 hover:text-rose-700'
-                  : ''
-              }`}
-              title={isSelectionMode ? "Matikan mode pilih untuk mengubah gender" : canViewPutra && canViewPutri ? "Klik untuk mengubah filter gender (Putra ⇄ Putri)" : undefined}
-            >
-              <span>{genderFilter}</span>
-              {canViewPutra && canViewPutri && <ArrowLeftRight className="h-5 w-5 mt-0.5" />}
-            </span>
-          </h1>
-          <p className="text-xs text-slate-500 font-medium mt-1">
-            Menampilkan direktori penempatan asrama dan kamar santri <span className={genderFilter === 'Putra' ? 'text-blue-600 font-bold' : 'text-rose-600 font-bold'}>{genderFilter}</span> secara terpusat.
-          </p>
+              >
+                <span>
+                  {genderFilter === 'Putra' ? 'Santri Putra' : 'Santri Putri'}
+                </span>
+                {canViewPutra && canViewPutri && <ArrowLeftRight className="h-5 w-5 mt-0.5 shrink-0" />}
+              </span>
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Menampilkan direktori penempatan asrama dan kamar santri{' '}
+              <span className={genderFilter === 'Putra' ? 'text-indigo-600 font-bold' : 'text-rose-600 font-bold'}>
+                {genderFilter === 'Putra' ? 'Santri Putra' : 'Santri Putri'}
+              </span>{' '}
+              secara terpusat.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -772,7 +998,7 @@ export default function DataKamarSantriSub({
       )}
 
       {/* Search and Filters Box */}
-      <div className="sticky top-16 z-[45] bg-white/95 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-md sm:p-5">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm sm:p-5 mb-4">
         <div className="flex items-center gap-2">
           
           {/* Search Box */}
@@ -1189,73 +1415,30 @@ export default function DataKamarSantriSub({
       </div>
 
       {/* Main Table View with sticky header & column freeze exactly like data induk */}
-      <div id="kamar-santri-table-section" className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin">
-        {sortedSantri.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 mb-4 border border-slate-100">
-              <Info className="h-6 w-6" />
+      <div id="kamar-santri-table-section" className="relative group/table overflow-visible">
+        {renderScrollButtons(false)}
+
+        <div 
+          ref={containerRef}
+          onScroll={handleTableScroll}
+          className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin select-none"
+        >
+          {sortedSantri.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 mb-4 border border-slate-100">
+                <Info className="h-6 w-6" />
+              </div>
+              <h3 className="font-display text-sm font-bold text-slate-700">Tidak Ada Data Ditemukan</h3>
+              <p className="text-xs text-slate-500 max-w-sm mt-1.5">
+                Santri {genderFilter} tidak ditemukan dengan kata kunci pencarian atau kriteria filter yang sedang aktif.
+              </p>
             </div>
-            <h3 className="font-display text-sm font-bold text-slate-700">Tidak Ada Data Ditemukan</h3>
-            <p className="text-xs text-slate-500 max-w-sm mt-1.5">
-              Santri {genderFilter} tidak ditemukan dengan kata kunci pencarian atau kriteria filter yang sedang aktif.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto scrollbar-thin">
-            <table className="w-full border-collapse text-left text-sm text-slate-600 min-w-[1000px]">
-              <thead className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider select-none">
-                <tr>
-                  
-                  {/* Sticky Checklist Column */}
-                  {isSelectionMode && (
-                    <th className="px-3 py-4 text-center sticky left-0 bg-slate-50 z-30 border-r border-slate-100 w-12 min-w-[48px]">
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                          checked={paginatedSantri.length > 0 && paginatedSantri.every(s => selectedSantriIds.includes(s.id))}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              const newIds = [...selectedSantriIds];
-                              paginatedSantri.forEach(s => {
-                                if (!newIds.includes(s.id)) {
-                                  newIds.push(s.id);
-                                }
-                              });
-                              setSelectedSantriIds(newIds);
-                            } else {
-                              const paginatedIds = paginatedSantri.map(s => s.id);
-                              setSelectedSantriIds(selectedSantriIds.filter(id => !paginatedIds.includes(id)));
-                            }
-                          }}
-                        />
-                      </div>
-                    </th>
-                  )}
-
-                  {/* Sticky No Column */}
-                  <th className={`px-4 py-4 static sm:sticky ${
-                    isSelectionMode ? 'sm:left-12' : 'sm:left-0'
-                  } bg-slate-50 z-20 sm:shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-slate-100 text-center w-16 min-w-[64px] font-display text-xs font-bold uppercase tracking-wider text-slate-400`}>
-                    No.
-                  </th>
-
-                  {/* Sticky Nama Lengkap Column */}
-                  {renderSortHeader('nama', 'Nama Lengkap', true, isSelectionMode ? 'sm:left-28 sm:shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-slate-100 min-w-[240px]' : 'sm:left-16 sm:shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-slate-100 min-w-[240px]')}
-
-                  {/* Rest of non-sticky columns */}
-                  {renderSortHeader('nis', 'NIS')}
-                  {renderSortHeader('alamat', 'Alamat')}
-                  {renderSortHeader('kamar', 'Kamar')}
-                  {renderSortHeader('nomorLemari', 'No. Lemari')}
-
-                  {/* Sticky Aksi Column - On the right side */}
-                  <th className="px-2 py-4 text-center w-12 bg-slate-50 font-display text-xs font-bold uppercase tracking-wider text-slate-400 sticky right-0 z-30 shadow-[-2px_0_5px_rgba(0,0,0,0.05)] border-l border-slate-100">
-                    Aksi
-                  </th>
-
-                </tr>
-              </thead>
+          ) : (
+            <div className="overflow-x-auto scrollbar-thin">
+              <table className="w-full border-collapse text-left text-sm text-slate-600 min-w-[1000px]">
+                <thead className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider select-none">
+                  {renderTableHeadContents('bg-slate-50 text-slate-400')}
+                </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginatedSantri.map((s, idx) => {
                   const formattedRoom = getKamarFormat(s);
@@ -1334,9 +1517,22 @@ export default function DataKamarSantriSub({
                       }`}>
                         <div className="flex items-center gap-3">
                           {renderSantriAvatar(s, "h-9 w-9 shrink-0 rounded-full border border-slate-100 shadow-xs")}
-                          <p className="font-display text-sm font-bold text-slate-900 leading-tight">
-                            {s.nama}
-                          </p>
+                          <div className="min-w-0">
+                            <p className="font-display text-sm font-bold text-slate-900 leading-tight truncate">
+                              {s.nama}
+                            </p>
+                            <div className="mt-1 flex items-center gap-1">
+                              {s.statusDomisili === 'Kampung' ? (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200/80 text-[9px] font-extrabold tracking-wide">
+                                  Kampung
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 text-[9px] font-extrabold tracking-wide">
+                                  Muqim
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
@@ -1488,7 +1684,7 @@ export default function DataKamarSantriSub({
                                           setActionMenuCoords(null);
                                           handleRemoveFromRoom(s);
                                         }}
-                                        disabled={!s.kamar || s.kamar.toLowerCase() === 'belum ada' || s.kamar.toLowerCase() === 'belum dapat'}
+                                        disabled={!hasValidRoom(s.kamar)}
                                         className="flex w-full items-center px-3 py-2 rounded-lg text-left text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:pointer-events-none transition-colors border-none bg-transparent cursor-pointer"
                                       >
                                         <span>Keluarkan</span>
@@ -1510,6 +1706,7 @@ export default function DataKamarSantriSub({
             </table>
           </div>
         )}
+        </div>
       </div>
 
       {/* Pagination Controls */}
@@ -1897,6 +2094,50 @@ export default function DataKamarSantriSub({
       )}
 
 
+
+      {/* Viewport-sticky floating header (rendered via Portal to avoid being trapped by parent transform layout) */}
+      {typeof document !== 'undefined' && createPortal(
+        <div
+          ref={floatingHeaderOuterRef}
+          className="fixed z-[45] bg-slate-50 border border-slate-100 shadow-md rounded-t-2xl overflow-visible"
+          style={{
+            top: `${stickyTop}px`,
+            left: `${floatingHeaderStyle.left}px`,
+            width: `${floatingHeaderStyle.width}px`,
+            display: isScrolled ? 'block' : 'none',
+          }}
+        >
+          <div
+            ref={floatingHeaderRef}
+            onScroll={(e) => {
+              const floating = e.currentTarget;
+              if (scrollSourceRef.current !== 'main') {
+                scrollSourceRef.current = 'floating';
+                if (scrollTimeoutRef.current) {
+                  window.clearTimeout(scrollTimeoutRef.current);
+                }
+                scrollTimeoutRef.current = window.setTimeout(() => {
+                  scrollSourceRef.current = null;
+                }, 150);
+
+                if (containerRef.current && containerRef.current.scrollLeft !== floating.scrollLeft) {
+                  containerRef.current.scrollLeft = floating.scrollLeft;
+                }
+              }
+            }}
+            className="overflow-x-auto [&::-webkit-scrollbar]:hidden"
+          >
+            <table className="w-full border-collapse text-left text-sm text-slate-600 min-w-[1000px]">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-400 bg-slate-50">
+                {renderTableHeadContents('bg-slate-50 text-slate-400 border-b border-slate-100')}
+              </thead>
+            </table>
+          </div>
+          {/* Scroll Navigation Buttons inside Floating Header */}
+          {renderScrollButtons(true)}
+        </div>,
+        document.body
+      )}
 
     </div>
   );

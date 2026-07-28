@@ -370,8 +370,9 @@ export default function RombelSub({
               <tr>
                 <th style="width: 30px; text-align: center;">No</th>
                 <th style="width: 65px; text-align: center;">NIS</th>
-                <th style="width: 412px; text-align: left; padding-left: 8px;">Nama Lengkap Santri</th>
-                <th style="width: 412px; text-align: left; padding-left: 8px;">Alamat</th>
+                <th style="width: 300px; text-align: left; padding-left: 8px;">Nama Lengkap Santri</th>
+                <th style="width: 100px; text-align: center;">Kamar</th>
+                <th style="width: 300px; text-align: left; padding-left: 8px;">Alamat</th>
               </tr>
             </thead>
             <tbody>
@@ -380,7 +381,7 @@ export default function RombelSub({
         if (members.length === 0) {
           html += `
             <tr>
-              <td colspan="4" class="empty-cell">Belum ada santri terdaftar di kelompok rombel ini</td>
+              <td colspan="5" class="empty-cell">Belum ada santri terdaftar di kelompok rombel ini</td>
             </tr>
           `;
         } else {
@@ -401,6 +402,7 @@ export default function RombelSub({
                 <td style="text-align: center;">${idx + 1}</td>
                 <td style="font-family: monospace; text-align: center;">${s.nis}</td>
                 <td style="font-weight: bold; color: #1e293b;">${s.nama}</td>
+                <td style="text-align: center; font-weight: bold;">${s.kamar || '-'}</td>
                 <td>${fullAlamat}</td>
               </tr>
             `;
@@ -1518,7 +1520,7 @@ export default function RombelSub({
                                       )}
                                     </div>
                                     <p className="text-[9px] font-mono text-slate-400 tracking-wider mt-0.5">
-                                      {s.nis}{s.kecamatan || s.kabupaten ? ` • ${[s.kecamatan, s.kabupaten].filter(Boolean).join(', ')}` : ''}
+                                      {s.nis}{s.kamar ? ` • Kamar ${s.kamar}` : ''}{s.kecamatan || s.kabupaten ? ` • ${[s.kecamatan, s.kabupaten].filter(Boolean).join(', ')}` : ''}
                                     </p>
                                   </div>
                                 </div>

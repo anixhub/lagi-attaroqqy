@@ -5,7 +5,7 @@ import {
   ArrowLeft, Search, GraduationCap, ArrowLeftRight, Check, CheckCircle2, CheckSquare, 
   UserCheck, AlertCircle, X, MoreVertical, Award, ShieldAlert, UserMinus, ArrowRightLeft,
   Folder, FolderOpen, User, ArrowUpDown, Pencil, Settings, UserPlus, ArrowUp, ArrowDown,
-  ChevronDown, ChevronsUpDown, Printer, Sparkles
+  ChevronDown, ChevronsUpDown, Printer, Sparkles, Home, Loader2
 } from 'lucide-react';
 import { Lembaga, Kelas, Santri, KategoriRombel, KelompokRombel, RombelAssignment, isDefaultClass, isEmisTerdaftar, getClsLembagaId, isGenderMatch } from '../../types';
 import { demoteSantriToCalonPesertaDidik } from '../../lib/utils';
@@ -53,6 +53,19 @@ interface LembagaKelasSubProps {
   onRemoveAssignment?: (santriId: string, kelompokId: string) => any;
   onResetAllClasses?: () => any;
 }
+
+const getLogoUrl = (url?: string): string => {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/')) {
+    return trimmed;
+  }
+  return `/${trimmed}`;
+};
 
 export default function LembagaKelasSub({
   lembagasList,
@@ -119,7 +132,7 @@ export default function LembagaKelasSub({
   const [currentPage, setCurrentPage] = useState(1);
   
   // Sorting states
-  const [sortField, setSortField] = useState<'nama' | 'nis' | 'nisn' | 'nism' | 'statusKeanggotaan' | 'statusEmis' | 'statusVerval' | null>(null);
+  const [sortField, setSortField] = useState<'nama' | 'nis' | 'nisn' | 'nism' | 'statusKeanggotaan' | 'statusEmis' | 'statusVerval' | 'kamar' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Scroll & Table navigation states
@@ -205,7 +218,7 @@ export default function LembagaKelasSub({
     }
   };
 
-  const handleSort = (field: 'nama' | 'nis' | 'nisn' | 'nism' | 'statusKeanggotaan' | 'statusEmis' | 'statusVerval') => {
+  const handleSort = (field: 'nama' | 'nis' | 'nisn' | 'nism' | 'statusKeanggotaan' | 'statusEmis' | 'statusVerval' | 'kamar') => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -214,7 +227,7 @@ export default function LembagaKelasSub({
     }
   };
 
-  const renderSortableHeader = (label: string, field: 'nama' | 'nis' | 'nisn' | 'nism' | 'statusKeanggotaan' | 'statusEmis' | 'statusVerval', extraClass: string, justify: string = 'justify-start') => {
+  const renderSortableHeader = (label: string, field: 'nama' | 'nis' | 'nisn' | 'nism' | 'statusKeanggotaan' | 'statusEmis' | 'statusVerval' | 'kamar', extraClass: string, justify: string = 'justify-start') => {
     const isSorted = sortField === field;
     return (
       <th 
@@ -280,6 +293,7 @@ export default function LembagaKelasSub({
   const [editingLembaga, setEditingLembaga] = useState<any | null>(null);
   const [lemNama, setLemNama] = useState('');
   const [lemLogo, setLemLogo] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [lemDeskripsi, setLemDeskripsi] = useState('');
   const [taMulaiTanggal, setTaMulaiTanggal] = useState<number>(1);
   const [taMulaiBulan, setTaMulaiBulan] = useState<number>(7);
@@ -798,6 +812,9 @@ export default function LembagaKelasSub({
       const isNisnValidB = !!(b.nisn && b.nisn.trim() !== '');
       valA = a.statusVerval || (isNisnValidA ? 'Sukses' : 'Proses');
       valB = b.statusVerval || (isNisnValidB ? 'Sukses' : 'Proses');
+    } else if (sortField === 'kamar') {
+      valA = a.kamar || '-';
+      valB = b.kamar || '-';
     }
 
     if (typeof valA === 'string' && typeof valB === 'string') {
@@ -838,6 +855,7 @@ export default function LembagaKelasSub({
 
   // --- CRUD Handlers ---
   const handleOpenLembagaModal = (lem: any = null) => {
+    setIsUploadingLogo(false);
     if (lem) {
       setEditingLembaga(lem);
       setLemNama(lem.nama);
@@ -1154,7 +1172,17 @@ export default function LembagaKelasSub({
         showToast(`${transferStudent.nama} berhasil dipindahkan.`);
       }
     } else {
-      const destClassObj = kelasList.find(c => c.id === destClassId);
+      let destClassObj = kelasList.find(c => c.id === destClassId);
+      if (!destClassObj && destClassId.startsWith('default-')) {
+        destClassObj = {
+          id: destClassId,
+          lembagaId: String(targetLemId),
+          nama: 'Calon Peserta Didik',
+          waliKelas: '-',
+          tingkatan: 'Lainnya',
+          isDefault: true
+        };
+      }
       if (destClassObj) {
         onUpdateSantriClass(transferStudent.id, destClassObj.nama, targetLemId);
         const targetLemObj = lembagasList.find(l => l.id === targetLemId);
@@ -1439,7 +1467,17 @@ export default function LembagaKelasSub({
         showToast(`${selectedStudents.length} santri berhasil dipindahkan.`);
       }
     } else {
-      const destClassObj = kelasList.find(c => c.id === bulkDestClassId);
+      let destClassObj = kelasList.find(c => c.id === bulkDestClassId);
+      if (!destClassObj && bulkDestClassId.startsWith('default-')) {
+        destClassObj = {
+          id: bulkDestClassId,
+          lembagaId: String(targetLemId),
+          nama: 'Calon Peserta Didik',
+          waliKelas: '-',
+          tingkatan: 'Lainnya',
+          isDefault: true
+        };
+      }
       if (destClassObj) {
         if (onUpdateSantriClassBatch) {
           onUpdateSantriClassBatch(selectedStudents.map(s => s.id), destClassObj.nama, targetLemId);
@@ -1583,13 +1621,19 @@ export default function LembagaKelasSub({
       year: 'numeric'
     });
 
+    const isFormal = activeTab === 'Formal';
+
     const rowsHtml = studentsInClass.map((s, idx) => `
       <tr>
         <td style="text-align: center;">${idx + 1}</td>
         <td>${s.nis || '-'}</td>
         <td><strong>${s.nama}</strong></td>
-        <td>${s.statusEmis || '-'}</td>
-        <td>${s.statusVerval || '-'}</td>
+        ${isFormal ? `
+          <td>${s.statusEmis || '-'}</td>
+          <td>${s.statusVerval || '-'}</td>
+        ` : `
+          <td>${s.kamar || '-'}</td>
+        `}
         <td style="text-align: center;">${s.statusKeanggotaan || 'Aktif'}</td>
       </tr>
     `).join('');
@@ -1632,8 +1676,12 @@ export default function LembagaKelasSub({
               <th style="width: 30px; text-align: center;">No</th>
               <th style="width: 90px;">NIS</th>
               <th>Nama Santri</th>
-              <th style="width: 90px;">Status EMIS</th>
-              <th style="width: 90px;">Status Verval</th>
+              ${isFormal ? `
+                <th style="width: 90px;">Status EMIS</th>
+                <th style="width: 90px;">Status Verval</th>
+              ` : `
+                <th style="width: 100px;">Kamar</th>
+              `}
               <th style="width: 70px; text-align: center;">Status</th>
             </tr>
           </thead>
@@ -1798,7 +1846,7 @@ export default function LembagaKelasSub({
                       <div className="w-32 bg-slate-50 flex items-center justify-center shrink-0 border-r border-slate-100 relative overflow-hidden">
                         {l.logo ? (
                           <img
-                            src={l.logo}
+                            src={getLogoUrl(l.logo)}
                             alt={l.nama}
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
@@ -1947,7 +1995,7 @@ export default function LembagaKelasSub({
                   <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-50 flex items-center justify-center mb-4 shadow-3xs">
                     {selectedLembaga.logo ? (
                       <img 
-                        src={selectedLembaga.logo} 
+                        src={getLogoUrl(selectedLembaga.logo)} 
                         alt={selectedLembaga.nama} 
                         className="w-full h-full object-cover" 
                         referrerPolicy="no-referrer" 
@@ -2226,12 +2274,18 @@ export default function LembagaKelasSub({
                     </div>
 
                     {/* 2. BENTO STATS CARDS */}
-                    <div className={`grid grid-cols-1 ${isCalonPelajarPage ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-5 mb-6 shrink-0`}>
+                    <div className={`grid grid-cols-1 ${
+                      activeTab === 'Formal' 
+                        ? (isCalonPelajarPage ? 'sm:grid-cols-2' : 'sm:grid-cols-3') 
+                        : (isCalonPelajarPage ? 'sm:grid-cols-1' : 'sm:grid-cols-2')
+                    } gap-5 mb-6 shrink-0`}>
                       
-                       {/* Card 1: Wali Kelas */}
+                       {/* Card 1: Wali Kelas / Pembimbing */}
                        {!isCalonPelajarPage && (
                          <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-2xs flex flex-col justify-between">
-                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2.5">WALI KELAS</span>
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2.5">
+                             {activeTab === 'Rombel' ? 'PEMBIMBING' : 'WALI KELAS'}
+                           </span>
                            <div className="flex items-center gap-3">
                              <div className="h-9 w-9 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
                                <User className="h-4.5 w-4.5 text-[#046A38]" />
@@ -2256,71 +2310,73 @@ export default function LembagaKelasSub({
                         </div>
                       </div>
 
-                      {/* Card 3: Verval / EMIS Status Bar Chart */}
-                      {isCalonPelajarPage ? (
-                        <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-2xs flex flex-col justify-between min-h-[105px]">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">STATUS EMIS</span>
-                          <div className="flex flex-col gap-2">
-                            {/* Row 1: Terdaftar */}
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-                                <span className="text-blue-700">Terdaftar</span>
-                                <span>{emisRegisteredCount} ({emisRegisteredPercent}%)</span>
+                      {/* Card 3: Verval / EMIS Status Bar Chart - Hanya untuk Pendidikan Formal */}
+                      {activeTab === 'Formal' && (
+                        isCalonPelajarPage ? (
+                          <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-2xs flex flex-col justify-between min-h-[105px]">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">STATUS EMIS</span>
+                            <div className="flex flex-col gap-2">
+                              {/* Row 1: Terdaftar */}
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                                  <span className="text-blue-700">Terdaftar</span>
+                                  <span>{emisRegisteredCount} ({emisRegisteredPercent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-blue-600 h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${emisRegisteredPercent}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-blue-600 h-full rounded-full transition-all duration-500" 
-                                  style={{ width: `${emisRegisteredPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                            {/* Row 2: Belum */}
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-                                <span className="text-amber-700">Belum</span>
-                                <span>{emisBelumCount} ({emisBelumPercent}%)</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-amber-500 h-full rounded-full transition-all duration-500" 
-                                  style={{ width: `${emisBelumPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-2xs flex flex-col justify-between min-h-[105px]">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">STATUS VERVAL</span>
-                          <div className="flex flex-col gap-2">
-                            {/* Row 1: Sukses */}
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-                                <span className="text-emerald-700">Sukses</span>
-                                <span>{verifiedCount} ({verifiedPercent}%)</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-[#00693E] h-full rounded-full transition-all duration-500" 
-                                  style={{ width: `${verifiedPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                            {/* Row 2: Proses */}
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-                                <span className="text-rose-600">Proses</span>
-                                <span>{pendingCount} ({pendingPercent}%)</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-rose-500 h-full rounded-full transition-all duration-500" 
-                                  style={{ width: `${pendingPercent}%` }}
-                                />
+                              {/* Row 2: Belum */}
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                                  <span className="text-amber-700">Belum</span>
+                                  <span>{emisBelumCount} ({emisBelumPercent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-amber-500 h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${emisBelumPercent}%` }}
+                                  />
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="bg-white rounded-3xl border border-slate-100 p-5 shadow-2xs flex flex-col justify-between min-h-[105px]">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">STATUS VERVAL</span>
+                            <div className="flex flex-col gap-2">
+                              {/* Row 1: Sukses */}
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                                  <span className="text-emerald-700">Sukses</span>
+                                  <span>{verifiedCount} ({verifiedPercent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-[#00693E] h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${verifiedPercent}%` }}
+                                  />
+                                </div>
+                              </div>
+                              {/* Row 2: Proses */}
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                                  <span className="text-rose-600">Proses</span>
+                                  <span>{pendingCount} ({pendingPercent}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-rose-500 h-full rounded-full transition-all duration-500" 
+                                    style={{ width: `${pendingPercent}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
                       )}
 
                     </div>
@@ -2356,25 +2412,26 @@ export default function LembagaKelasSub({
                         )}
                       </div>
 
-                      {/* Status Filter Select */}
-                      <div className="w-full sm:w-48 shrink-0 relative">
-                        <select
-                          value={statusFilter}
-                          onChange={(e) => {
-                            setStatusFilter(e.target.value);
-                            setCurrentPage(1);
-                          }}
-                          className="w-full h-11 pl-4 pr-10 bg-slate-50 border border-slate-100/80 rounded-2xl text-xs font-bold text-slate-750 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-600/20 focus:border-[#00693E] appearance-none transition-all shadow-3xs cursor-pointer"
-                        >
-                          {isCalonPelajarPage ? (
-                            <>
-                              <option value="Semua">Semua EMIS</option>
-                              <option value="Terdaftar">Terdaftar</option>
-                              <option value="Belum">Belum Terdaftar</option>
-                            </>
-                          ) : (
-                            <>
-                              <option value="Semua">Semua Verval</option>
+                      {/* Status Filter Select (Hanya untuk Pendidikan Formal) */}
+                      {activeTab === 'Formal' && (
+                        <div className="w-full sm:w-48 shrink-0 relative">
+                          <select
+                            value={statusFilter}
+                            onChange={(e) => {
+                              setStatusFilter(e.target.value);
+                              setCurrentPage(1);
+                            }}
+                            className="w-full h-11 pl-4 pr-10 bg-slate-50 border border-slate-100/80 rounded-2xl text-xs font-bold text-slate-750 focus:outline-none focus:bg-white focus:ring-2 focus:ring-emerald-600/20 focus:border-[#00693E] appearance-none transition-all shadow-3xs cursor-pointer"
+                          >
+                            {isCalonPelajarPage ? (
+                              <>
+                                <option value="Semua">Semua EMIS</option>
+                                <option value="Terdaftar">Terdaftar</option>
+                                <option value="Belum">Belum Terdaftar</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="Semua">Semua Verval</option>
                               <option value="Sukses">Sukses</option>
                               <option value="Proses">Proses</option>
                             </>
@@ -2384,6 +2441,7 @@ export default function LembagaKelasSub({
                           <ChevronDown className="h-4 w-4" />
                         </div>
                       </div>
+                      )}
 
                       {/* Filter Kamar Select */}
                       <div className="w-full sm:w-48 shrink-0 relative">
@@ -2505,8 +2563,14 @@ export default function LembagaKelasSub({
                                   {renderSortableHeader('NISN', 'nisn', 'w-[110px] min-w-[110px] pl-1 py-4 bg-slate-100')}
                                   {renderSortableHeader('NISM', 'nism', 'w-[110px] min-w-[110px] pl-1 py-4 bg-slate-100')}
                                   {renderSortableHeader('Status', 'statusKeanggotaan', 'w-[100px] min-w-[100px] pl-1 py-4 bg-slate-100')}
-                                  {isCalonPelajarPage && renderSortableHeader('EMIS', 'statusEmis', 'w-[100px] min-w-[100px] pl-3 py-4 bg-slate-100 border-r border-slate-200')}
-                                  {!isCalonPelajarPage && renderSortableHeader('Verval', 'statusVerval', 'w-[100px] min-w-[100px] pl-3 py-4 bg-slate-100 border-r border-slate-200')}
+                                  {activeTab === 'Formal' ? (
+                                    <>
+                                      {isCalonPelajarPage && renderSortableHeader('EMIS', 'statusEmis', 'w-[100px] min-w-[100px] pl-3 py-4 bg-slate-100 border-r border-slate-200')}
+                                      {!isCalonPelajarPage && renderSortableHeader('Verval', 'statusVerval', 'w-[100px] min-w-[100px] pl-3 py-4 bg-slate-100 border-r border-slate-200')}
+                                    </>
+                                  ) : (
+                                    renderSortableHeader('Kamar', 'kamar', 'w-[110px] min-w-[110px] pl-3 py-4 bg-slate-100 border-r border-slate-200')
+                                  )}
                                   <th className="sticky right-0 z-20 w-[56px] min-w-[56px] max-w-[56px] px-2 py-4 bg-slate-100 border-l border-slate-200 font-black text-slate-600 text-center shadow-[-2px_0_5px_rgba(0,0,0,0.03)]">
                                     <span>Aksi</span>
                                   </th>
@@ -2620,8 +2684,11 @@ export default function LembagaKelasSub({
                                       </span>
                                     </td>
 
-                                    {/* EMIS Column */}
-                                    {isCalonPelajarPage && (
+                                    {/* EMIS / Verval / Kamar Column */}
+                                    {activeTab === 'Formal' ? (
+                                      <>
+                                        {/* EMIS Column */}
+                                        {isCalonPelajarPage && (
                                       <td className="w-[100px] min-w-[100px] pl-1 py-4.5 relative">
                                         <div className="relative inline-block text-left">
                                           <button
@@ -2839,8 +2906,18 @@ export default function LembagaKelasSub({
                                         </div>
                                       </td>
                                     )}
+                                  </>
+                                ) : (
+                                  /* Kamar Column */
+                                  <td className="w-[110px] min-w-[110px] pl-3 py-4.5 font-bold text-slate-700 truncate">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-700 text-xs font-bold border border-slate-200/60">
+                                      <Home className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                      <span className="truncate">{s.kamar || '-'}</span>
+                                    </span>
+                                  </td>
+                                )}
 
-                                    {/* Aksi Column (Sticky Right) */}
+                                {/* Aksi Column (Sticky Right) */}
                                     <td className={`sticky right-0 z-10 w-[56px] min-w-[56px] max-w-[56px] text-center px-2 py-4.5 transition-colors border-l border-slate-200 shadow-[-2px_0_5px_rgba(0,0,0,0.03)] ${stickyBg}`}>
                                       <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
                                         <button
@@ -2972,50 +3049,123 @@ export default function LembagaKelasSub({
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2">
                         Logo Lembaga (Opsional)
                       </label>
-                      <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        {lemLogo ? (
-                          <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0 shadow-sm bg-white">
-                            <img src={lemLogo} alt="Logo preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            <button
-                              type="button"
-                              onClick={() => setLemLogo('')}
-                              className="absolute inset-0 bg-black/65 hover:bg-black/80 flex items-center justify-center text-white text-[10px] font-black tracking-wider transition-colors cursor-pointer"
-                            >
-                              HAPUS
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center bg-white text-slate-300 shrink-0">
-                            <School className="h-6 w-6" />
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
+                      <div className="flex flex-col gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-4">
+                          {isUploadingLogo ? (
+                            <div className="w-16 h-16 rounded-xl border border-slate-200 flex flex-col items-center justify-center bg-white text-emerald-600 shrink-0 shadow-2xs">
+                              <Loader2 className="h-5 w-5 animate-spin mb-1" />
+                              <span className="text-[8px] font-bold">UNGGAH...</span>
+                            </div>
+                          ) : lemLogo ? (
+                            <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0 shadow-sm bg-white group">
+                              <img src={getLogoUrl(lemLogo)} alt="Logo preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              <button
+                                type="button"
+                                onClick={() => setLemLogo('')}
+                                className="absolute inset-0 bg-black/65 hover:bg-black/80 flex items-center justify-center text-white text-[10px] font-black tracking-wider transition-colors cursor-pointer"
+                              >
+                                HAPUS
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center bg-white text-slate-300 shrink-0">
+                              <School className="h-6 w-6" />
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={isUploadingLogo}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+
+                                setIsUploadingLogo(true);
                                 const reader = new FileReader();
                                 reader.onload = (evt) => {
-                                  if (evt.target?.result) {
-                                    setLemLogo(evt.target.result as string);
+                                  const rawUrl = evt.target?.result as string;
+                                  if (!rawUrl) {
+                                    setIsUploadingLogo(false);
+                                    return;
                                   }
+                                  const img = new Image();
+                                  img.onload = () => {
+                                    const canvas = document.createElement('canvas');
+                                    const maxDim = 200;
+                                    let w = img.width;
+                                    let h = img.height;
+                                    if (w > h) {
+                                      if (w > maxDim) {
+                                        h = Math.round((h * maxDim) / w);
+                                        w = maxDim;
+                                      }
+                                    } else {
+                                      if (h > maxDim) {
+                                        w = Math.round((w * maxDim) / h);
+                                        h = maxDim;
+                                      }
+                                    }
+                                    canvas.width = w;
+                                    canvas.height = h;
+                                    const ctx = canvas.getContext('2d');
+                                    if (ctx) {
+                                      ctx.drawImage(img, 0, 0, w, h);
+                                      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+                                      const base64Data = compressedBase64.split(',')[1] || compressedBase64;
+                                      
+                                      fetch('/api/upload', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          fileName: `logo_lembaga_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.jpg`,
+                                          fileBase64: base64Data
+                                        })
+                                      })
+                                        .then(r => r.json())
+                                        .then(resData => {
+                                          setIsUploadingLogo(false);
+                                          if (resData && resData.success && resData.publicUrl) {
+                                            setLemLogo(resData.publicUrl);
+                                            showToast('Logo berhasil disimpan sebagai file fisik.');
+                                          } else {
+                                            showToast('Gagal mengunggah logo ke server.');
+                                          }
+                                        })
+                                        .catch((err) => {
+                                          setIsUploadingLogo(false);
+                                          console.error("Gagal unggah logo:", err);
+                                          showToast('Terjadi kesalahan saat mengunggah logo.');
+                                        });
+                                    } else {
+                                      setIsUploadingLogo(false);
+                                    }
+                                  };
+                                  img.onerror = () => setIsUploadingLogo(false);
+                                  img.src = rawUrl;
                                 };
                                 reader.readAsDataURL(file);
-                              }
-                            }}
-                            className="hidden"
-                            id="logo-upload-input"
-                          />
-                          <label
-                            htmlFor="logo-upload-input"
-                            className="inline-block bg-white hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-[10px] font-extrabold cursor-pointer transition-colors border border-slate-200 shadow-sm"
-                          >
-                            PILIH GAMBAR
-                          </label>
-                          <p className="text-[9px] text-slate-400 mt-1 font-medium">PNG, JPG, maks. 2MB</p>
+                                e.target.value = '';
+                              }}
+                              className="hidden"
+                              id="logo-upload-input"
+                            />
+                            <label
+                              htmlFor="logo-upload-input"
+                              className={`inline-block bg-white hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl text-[10px] font-extrabold cursor-pointer transition-colors border border-slate-200 shadow-sm ${isUploadingLogo ? 'opacity-50 pointer-events-none' : ''}`}
+                            >
+                              {isUploadingLogo ? 'MENGUNGGAH...' : lemLogo ? 'GANTI GAMBAR' : 'PILIH GAMBAR'}
+                            </label>
+                            <p className="text-[9px] text-slate-400 mt-1 font-medium">PNG, JPG (disimpan sebagai file fisik)</p>
+                          </div>
                         </div>
+
+                        {lemLogo && !isUploadingLogo && (
+                          <div className="mt-1 px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/60 rounded-xl flex items-center gap-2">
+                            <span className="text-[9px] font-bold text-emerald-800 shrink-0 uppercase tracking-wide">Path File:</span>
+                            <code className="text-[10px] font-mono font-semibold text-emerald-900 truncate select-all">{getLogoUrl(lemLogo)}</code>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </>
@@ -3026,17 +3176,25 @@ export default function LembagaKelasSub({
                 <button
                   type="button"
                   onClick={() => setIsLembagaModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer"
+                  disabled={isUploadingLogo}
+                  className="px-4 py-2 border border-slate-200 text-slate-500 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
                 >
                   BATAL
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveLembaga}
-                  disabled={!lemNama.trim()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
+                  disabled={!lemNama.trim() || isUploadingLogo}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center gap-2"
                 >
-                  SIMPAN
+                  {isUploadingLogo ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>MENGUNGGAH LOGO...</span>
+                    </>
+                  ) : (
+                    <span>SIMPAN</span>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -3273,7 +3431,12 @@ export default function LembagaKelasSub({
           );
           const activeBulkLemId = bulkTransferLembagaId || selectedLembaga.id;
           const currentBulkLemObj = lembagasList.find(l => l.id === activeBulkLemId) || selectedLembaga;
-          const targetBulkClasses = kelasList.filter(k => {
+          const isFormalTarget = (currentBulkLemObj?.jenis === 'Formal' || targetKind === 'Formal');
+
+          const selectedStudents = santriList.filter(s => selectedStudentIds.includes(s.id));
+          const hasUnregisteredEmis = selectedStudents.some(s => !isEmisTerdaftar(s.statusEmis));
+
+          let targetBulkClasses = kelasList.filter(k => {
             const lemId = getClsLembagaId(k);
             return lemId === String(activeBulkLemId);
           }).filter(c => {
@@ -3282,6 +3445,20 @@ export default function LembagaKelasSub({
             }
             return true;
           });
+
+          if (isFormalTarget && hasUnregisteredEmis) {
+            targetBulkClasses = targetBulkClasses.filter(c => isDefaultClass(c) || c.nama.trim().toLowerCase() === 'calon peserta didik');
+            if (targetBulkClasses.length === 0) {
+              targetBulkClasses = [{
+                id: 'default-' + activeBulkLemId,
+                lembagaId: String(activeBulkLemId),
+                nama: 'Calon Peserta Didik',
+                waliKelas: '-',
+                tingkatan: 'Lainnya',
+                isDefault: true
+              }];
+            }
+          }
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 animate-fade-in">
@@ -3358,6 +3535,12 @@ export default function LembagaKelasSub({
                       </select>
                     )}
                   </div>
+
+                  {isFormalTarget && hasUnregisteredEmis && (
+                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-medium leading-relaxed">
+                      ⚠️ Terdapat santri yang <strong>belum terdaftar EMIS</strong> di antara data yang dipilih. Pada pendidikan formal, kelas tujuan dibatasi hanya ke <strong>"Calon Peserta Didik"</strong>.
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2">

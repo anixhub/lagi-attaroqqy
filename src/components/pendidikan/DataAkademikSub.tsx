@@ -156,6 +156,51 @@ export default function DataAkademikSub({
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
 
+  // Horizontal Scroll Navigation state and refs
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollButtons = () => {
+    const container = containerRef.current;
+    if (container) {
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      const hasHorizontalScroll = scrollWidth > clientWidth + 4;
+      setCanScrollLeft(hasHorizontalScroll && scrollLeft > 2);
+      setCanScrollRight(hasHorizontalScroll && scrollLeft + clientWidth < scrollWidth - 2);
+    }
+  };
+
+  const scrollTable = (direction: 'left' | 'right') => {
+    const container = containerRef.current;
+    if (container) {
+      const scrollAmount = 300;
+      const targetScroll = direction === 'left' 
+        ? container.scrollLeft - scrollAmount 
+        : container.scrollLeft + scrollAmount;
+      
+      container.scrollTo({
+        left: targetScroll,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const handleTableScroll = () => {
+    updateScrollButtons();
+  };
+
+  useEffect(() => {
+    updateScrollButtons();
+    const timer = setTimeout(() => updateScrollButtons(), 100);
+    const handleResize = () => updateScrollButtons();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [paginatedSantri]);
+
   // Active Lembagas list based on gender filter and selected mode (formal vs internal)
   const activeLembagas = lembagasList.filter(l => {
     const matchesGender = !l.gender || l.gender === (genderFilter as string) || (l.gender as string) === 'Campuran' || (l.gender as string) === 'Semua';
@@ -960,7 +1005,7 @@ export default function DataAkademikSub({
             setSortDirection('asc');
           }
         }}
-        className={`px-6 py-4 cursor-pointer transition-all select-none font-display text-xs font-bold uppercase tracking-wider hover:bg-indigo-100/50 ${
+        className={`px-6 py-4 cursor-pointer transition-all select-none font-display text-xs font-bold uppercase tracking-wider hover:bg-indigo-100/50 relative ${
           isSticky 
             ? `static sm:sticky bg-slate-50 hover:bg-slate-100 z-20 ${extraClasses}` 
             : 'bg-slate-50 hover:bg-slate-100 text-slate-400'
@@ -978,7 +1023,40 @@ export default function DataAkademikSub({
             <ArrowUpDown className="h-3 w-3 text-slate-300 hover:text-slate-500 shrink-0" />
           )}
         </div>
+
+        {/* Scroll Left Button placed on right side of 'nama' header column */}
+        {key === 'nama' && canScrollLeft && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollTable('left');
+            }}
+            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-[40] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-all duration-200 hover:bg-slate-50 hover:scale-105 active:scale-95 cursor-pointer opacity-100"
+            title="Gulir Kiri"
+          >
+            <ChevronLeft className="h-4 w-4 stroke-[2.5] -translate-x-[0.5px]" />
+          </button>
+        )}
       </th>
+    );
+  };
+
+  const renderScrollButtons = () => {
+    if (!canScrollRight) return null;
+    return (
+      <button
+        id="table-scroll-right-btn"
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          scrollTable('right');
+        }}
+        className="absolute right-0 top-[26px] -translate-y-1/2 translate-x-1/2 z-[100] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-all duration-200 hover:bg-slate-50 hover:scale-105 active:scale-95 cursor-pointer opacity-100"
+        title="Gulir Kanan"
+      >
+        <ChevronRight className="h-4 w-4 stroke-[2.5] translate-x-[0.5px]" />
+      </button>
     );
   };
 
@@ -1628,7 +1706,13 @@ export default function DataAkademikSub({
       </div>
 
       {/* Main Table View with sticky header */}
-      <div id="academic-table-section" className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin">
+      <div id="academic-table-section" className="relative group/table overflow-visible">
+        {renderScrollButtons()}
+        <div 
+          ref={containerRef}
+          onScroll={handleTableScroll}
+          className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm scrollbar-thin select-none"
+        >
         {sortedSantri.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 mb-4 border border-slate-100">
@@ -1962,6 +2046,7 @@ export default function DataAkademikSub({
             </table>
           </div>
         )}
+        </div>
       </div>
 
       {/* Pagination Controls */}
@@ -2128,6 +2213,24 @@ export default function DataAkademikSub({
                   <div className="space-y-4.5 max-h-[350px] overflow-y-auto pr-1">
                     {activeLembagas.map(lem => {
                       const value = selectedClassesByLembaga[lem.id] || 'no_change';
+                      const isFormalLembaga = (lem as any).jenis === 'Formal';
+                      const hasUnregisteredEmis = santriToEdit.some(s => !isEmisTerdaftar(s.statusEmis));
+                      
+                      let availableClasses = kelasList.filter(c => c.lembagaId === lem.id);
+                      if (isFormalLembaga && hasUnregisteredEmis) {
+                        availableClasses = availableClasses.filter(c => (c as any).isDefault || c.nama.trim().toLowerCase() === 'calon peserta didik');
+                        if (availableClasses.length === 0) {
+                          availableClasses = [{
+                            id: 'default-' + lem.id,
+                            lembagaId: String(lem.id),
+                            nama: 'Calon Peserta Didik',
+                            waliKelas: '-',
+                            tingkatan: 'Lainnya',
+                            isDefault: true
+                          } as any];
+                        }
+                      }
+
                       return (
                         <div key={lem.id} className="space-y-1.5">
                           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -2147,15 +2250,17 @@ export default function DataAkademikSub({
                               <option value="no_change">— Tidak ada perubahan —</option>
                             )}
                             <option value="remove">Set Tanpa Kelas / Keluarkan</option>
-                            {kelasList
-                              .filter(c => c.lembagaId === lem.id)
-                              .map(cls => (
-                                <option key={cls.id} value={cls.id}>
-                                  {cls.nama}
-                                </option>
-                              ))
-                            }
+                            {availableClasses.map(cls => (
+                              <option key={cls.id} value={cls.id}>
+                                {cls.nama}
+                              </option>
+                            ))}
                           </select>
+                          {isFormalLembaga && hasUnregisteredEmis && (
+                            <p className="text-[11px] font-medium text-amber-700 mt-1">
+                              ⚠️ Terdapat santri belum terdaftar EMIS. Pada pendidikan formal, kelas dibatasi ke <strong>"Calon Peserta Didik"</strong>.
+                            </p>
+                          )}
                         </div>
                       );
                     })}

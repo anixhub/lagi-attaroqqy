@@ -64,7 +64,7 @@ interface SantriDetailModalProps {
 
 type TabType = 'biodata' | 'pembayaran' | 'akademik' | 'keamanan';
 
-const compressImageAndGetBase64 = (file: File, maxWidth = 320, maxHeight = 400, quality = 0.7): Promise<string> => {
+const compressImageAndGetBase64 = (file: File, maxWidth = 800, maxHeight = 1066, quality = 0.85): Promise<string> => {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       const reader = new FileReader();
