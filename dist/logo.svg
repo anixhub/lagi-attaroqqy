@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg-glow" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#047857" />
+    </radialGradient>
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Circle with elegant subtle glow -->
+  <circle cx="256" cy="256" r="236" fill="url(#bg-glow)" stroke="url(#gold-grad)" stroke-width="12" />
+
+  <!-- Outer Star Accent (Rub el Hizb style) -->
+  <g transform="translate(256, 256) scale(0.9)">
+    <!-- Square 1 -->
+    <rect x="-140" y="-140" width="280" height="280" rx="20" fill="none" stroke="url(#gold-grad)" stroke-width="6" opacity="0.4" />
+    <!-- Square 2 rotated 45 degrees -->
+    <rect x="-140" y="-140" width="280" height="280" rx="20" fill="none" stroke="url(#gold-grad)" stroke-width="6" transform="rotate(45)" opacity="0.4" />
+  </g>
+
+  <!-- Central Emblem: Al-Qur'an on Rehal (Book Stand) -->
+  <g transform="translate(256, 240) scale(1.1)" stroke="url(#gold-grad)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Rehal (Left side leg) -->
+    <path d="M-60,50 L30,-10 M-60,50 L-30,-10" stroke-width="12" />
+    <!-- Rehal (Right side leg) -->
+    <path d="M60,50 L-30,-10 M60,50 L30,-10" stroke-width="12" />
+    
+    <!-- Qur'an / Book Pages Left -->
+    <path d="M-70,-30 C-30,-45 -10,-15 0,-15 L0,20 C-10,20 -35,-5 -70,5 Z" fill="#ffffff" stroke-width="6" />
+    <!-- Qur'an / Book Pages Right -->
+    <path d="M70,-30 C30,-45 10,-15 0,-15 L0,20 C10,20 35,-5 70,5 Z" fill="#ffffff" stroke-width="6" />
+    
+    <!-- Book Cover Accents -->
+    <path d="M-72,-32 C-30,-48 -12,-17 0,-17" fill="none" stroke-width="4" opacity="0.8" />
+    <path d="M72,-32 C30,-48 12,-17 0,-17" fill="none" stroke-width="4" opacity="0.8" />
+    
+    <!-- Sparkles/Stars on top -->
+    <path d="M0,-55 L0,-45 M-5,-50 L5,-50" stroke-width="4" />
+  </g>
+  
+  <!-- Modern Clean Accent Dot pattern -->
+  <circle cx="256" cy="115" r="4" fill="#fbbf24" />
+  <circle cx="256" cy="397" r="4" fill="#fbbf24" />
+  <circle cx="115" cy="256" r="4" fill="#fbbf24" />
+  <circle cx="397" cy="256" r="4" fill="#fbbf24" />
+</svg>
