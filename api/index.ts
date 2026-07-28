@@ -9,6 +9,15 @@ dotenv.config();
 
 const app = express();
 
+// Subpath URL Normalization Middleware (supports /attaroqqy/api/ or any subdirectory deployment on Hostinger)
+app.use((req, res, next) => {
+  if (req.url.includes("/api/")) {
+    const apiIndex = req.url.indexOf("/api/");
+    req.url = req.url.substring(apiIndex);
+  }
+  next();
+});
+
 // Enable JSON parsing with a 10MB limit for compressed base64 photos
 app.use(express.json({ limit: "10mb" }));
 

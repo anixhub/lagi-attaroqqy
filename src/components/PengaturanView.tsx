@@ -45,7 +45,7 @@ import {
   Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { camelToSnake, snakeToCamel, getSupabaseStatus, updateTableRow, insertTableRow, fetchTableData, deleteTableRow, uploadFileToStorage, getSupabaseClient } from '../lib/api';
+import { camelToSnake, snakeToCamel, getSupabaseStatus, updateTableRow, insertTableRow, fetchTableData, deleteTableRow, uploadFileToStorage, getSupabaseClient, getApiUrl } from '../lib/api';
 import { AppCredentials, Santri, KeamananRecord, RombelAssignment, KelompokRombel, Lembaga, Kelas, KategoriRombel } from '../types';
 import { compressImage } from '../lib/utils';
 import ProfilPesantrenSub from './ProfilPesantrenSub';
@@ -499,7 +499,7 @@ export default function PengaturanView({
             }
           }
 
-          const resAssignments = await fetch('/api/db/rombel_assignment');
+          const resAssignments = await fetch(getApiUrl('/api/db/rombel_assignment'));
           if (resAssignments.ok) {
             const result = await resAssignments.json();
             if (result.success && Array.isArray(result.data)) {
@@ -507,7 +507,7 @@ export default function PengaturanView({
             }
           }
 
-          const resGroups = await fetch('/api/db/kelompok_rombel');
+          const resGroups = await fetch(getApiUrl('/api/db/kelompok_rombel'));
           if (resGroups.ok) {
             const result = await resGroups.json();
             if (result.success && Array.isArray(result.data)) {
@@ -515,7 +515,7 @@ export default function PengaturanView({
             }
           }
 
-          const resLembaga = await fetch('/api/db/lembaga');
+          const resLembaga = await fetch(getApiUrl('/api/db/lembaga'));
           if (resLembaga.ok) {
             const result = await resLembaga.json();
             if (result.success && Array.isArray(result.data)) {
@@ -523,7 +523,7 @@ export default function PengaturanView({
             }
           }
 
-          const resKelas = await fetch('/api/db/kelas');
+          const resKelas = await fetch(getApiUrl('/api/db/kelas'));
           if (resKelas.ok) {
             const result = await resKelas.json();
             if (result.success && Array.isArray(result.data)) {
@@ -531,7 +531,7 @@ export default function PengaturanView({
             }
           }
 
-          const resRombelCategories = await fetch('/api/db/kategori_rombel');
+          const resRombelCategories = await fetch(getApiUrl('/api/db/kategori_rombel'));
           if (resRombelCategories.ok) {
             const result = await resRombelCategories.json();
             if (result.success && Array.isArray(result.data)) {
@@ -539,7 +539,7 @@ export default function PengaturanView({
             }
           }
 
-          const resPeriode = await fetch('/api/db/periode');
+          const resPeriode = await fetch(getApiUrl('/api/db/periode'));
           if (resPeriode.ok) {
             const result = await resPeriode.json();
             if (result.success && Array.isArray(result.data)) {

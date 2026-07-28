@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Eye, EyeOff, LogIn, Flag, Shield, Info, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { fetchTableData, insertTableRow, updateTableRow } from '../lib/api';
+import { fetchTableData, insertTableRow, updateTableRow, getApiUrl } from '../lib/api';
 import { fetchAndSyncPermissionsFromSupabase } from '../lib/permissions';
 import { AppCredentials } from '../types';
 
@@ -102,7 +102,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     await new Promise(resolve => setTimeout(resolve, 500));
 
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(getApiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: normalizedEmail, password })
@@ -743,7 +743,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           {/* Overlay gradient to soften the contrast */}
           <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent z-10" />
           <img
-            src="/login_bg.jpeg"
+            src="login_bg.jpeg"
             alt="Lansekap Pondok Pesantren"
             referrerPolicy="no-referrer"
             className="absolute inset-0 w-full h-full object-cover select-none scale-105 hover:scale-100 transition-transform duration-[4000ms]"

@@ -113,10 +113,23 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
+// Helper to resolve dynamic API URLs supporting subpath hosting (e.g., /attaroqqy/)
+export function getApiUrl(endpoint: string): string {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  if (typeof window !== 'undefined') {
+    const pathname = window.location.pathname;
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length > 0 && parts[0] !== 'api' && !parts[0].includes('.')) {
+      return `/${parts[0]}${cleanEndpoint}`;
+    }
+  }
+  return cleanEndpoint;
+}
+
 // Check if Supabase connection is configured and available
 export async function getSupabaseStatus(): Promise<SupabaseStatus> {
   try {
-    const res = await fetch("/api/supabase-status");
+    const res = await fetch(getApiUrl("/api/supabase-status"));
     if (!res.ok) throw new Error("Status API error");
     return await safeJsonParse(res);
   } catch (error) {
@@ -129,7 +142,7 @@ export async function fetchTableData<T>(table: string, localKey?: string, defaul
   try {
     const status = await getSupabaseStatus();
     if (status.connected) {
-      const res = await fetch(`/api/db/${table}`);
+      const res = await fetch(getApiUrl(`/api/db/${table}`));
       if (res.ok) {
         const result = await safeJsonParse(res);
         if (result.success && Array.isArray(result.data)) {
@@ -180,7 +193,7 @@ export async function insertTableRow<T extends { id?: any }>(table: string, loca
     const status = await getSupabaseStatus();
     if (status.connected) {
       const snakeCasedRow = camelToSnake(row);
-      const res = await fetch(`/api/db/${table}`, {
+      const res = await fetch(getApiUrl(`/api/db/${table}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snakeCasedRow),
@@ -234,7 +247,7 @@ export async function insertTableRows<T extends { id?: any }>(table: string, loc
     const status = await getSupabaseStatus();
     if (status.connected) {
       const snakeCasedRows = camelToSnake(rows);
-      const res = await fetch(`/api/db/${table}`, {
+      const res = await fetch(getApiUrl(`/api/db/${table}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snakeCasedRows),
@@ -281,7 +294,7 @@ export async function updateTableRow<T extends { id?: any }>(
     const status = await getSupabaseStatus();
     if (status.connected) {
       const snakeCasedData = camelToSnake(updatedData);
-      const res = await fetch(`/api/db/${table}/${id}`, {
+      const res = await fetch(getApiUrl(`/api/db/${table}/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snakeCasedData),
@@ -337,7 +350,7 @@ export async function deleteTableRow(table: string, localKey: string, id: string
   try {
     const status = await getSupabaseStatus();
     if (status.connected) {
-      await fetch(`/api/db/${table}/${id}`, { method: "DELETE" });
+      await fetch(getApiUrl(`/api/db/${table}/${id}`), { method: "DELETE" });
     }
   } catch (err) {
     console.warn(`Supabase delete failed for ${table}/${id}, deleting locally.`, err);
@@ -382,7 +395,7 @@ export async function uploadFileToStorage(base64DataUrl: string, originalName: s
   const randomStr = Math.random().toString(36).substring(2, 7);
   const uniqueFileName = `${fieldKey}_${timestamp}_${randomStr}.${extension}`;
 
-  const res = await fetch("/api/upload", {
+  const res = await fetch(getApiUrl("/api/upload"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

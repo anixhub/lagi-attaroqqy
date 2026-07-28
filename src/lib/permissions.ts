@@ -182,9 +182,11 @@ export const DEFAULT_ROLES: AccountRole[] = [
   }
 ];
 
+import { getApiUrl } from './api';
+
 export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole[]> {
   try {
-    const statusRes = await fetch("/api/supabase-status");
+    const statusRes = await fetch(getApiUrl("/api/supabase-status"));
     if (!statusRes.ok) return DEFAULT_ROLES;
     
     let status;
@@ -198,9 +200,9 @@ export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole
     if (!status.connected) return DEFAULT_ROLES;
 
     const [rolesRes, permsRes, rolePermsRes] = await Promise.all([
-      fetch("/api/db/roles"),
-      fetch("/api/db/permissions"),
-      fetch("/api/db/role_has_permissions")
+      fetch(getApiUrl("/api/db/roles")),
+      fetch(getApiUrl("/api/db/permissions")),
+      fetch(getApiUrl("/api/db/role_has_permissions"))
     ]);
 
     if (!rolesRes.ok || !permsRes.ok || !rolePermsRes.ok) {
