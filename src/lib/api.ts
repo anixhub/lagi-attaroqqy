@@ -169,7 +169,14 @@ export function getApiUrl(endpoint: string): string {
 // Fetch list of items from table
 export async function fetchTableData<T>(table: string, localKey?: string, defaultValue: T[] = []): Promise<T[]> {
   try {
-    const res = await fetch(getApiUrl(`/api/db/${table}`));
+    const url = getApiUrl(`/api/db/${table}?_t=${Date.now()}`);
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    });
     if (res.ok) {
       const result = await safeJsonParse(res);
       if (result.success && Array.isArray(result.data)) {
@@ -183,7 +190,7 @@ export async function fetchTableData<T>(table: string, localKey?: string, defaul
           }
         });
         const fetchedData = Array.from(uniqueMap.values());
-        if (localKey && fetchedData.length > 0) {
+        if (localKey) {
           safeLocalStorageSetItem(localKey, JSON.stringify(fetchedData));
         }
         return fetchedData;
@@ -198,7 +205,7 @@ export async function fetchTableData<T>(table: string, localKey?: string, defaul
       const localStr = localStorage.getItem(localKey);
       if (localStr) {
         const parsed = JSON.parse(localStr);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }

@@ -122,7 +122,7 @@ export default function HumasyView({
     // Subscribe to WebSocket realtime changes from server
     const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
       if (payload.event === 'db_change') {
-        if (!payload.table || payload.table === 'kompleks' || payload.table === 'kamar' || payload.action === 'truncate_all') {
+        if (!payload.table || payload.table === 'kompleks' || payload.table === 'kamar' || payload.table === 'santri' || payload.action === 'truncate_all') {
           loadHumasData();
         }
       }

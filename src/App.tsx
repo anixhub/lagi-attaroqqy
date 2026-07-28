@@ -233,6 +233,52 @@ export default function App() {
     // Subscribe to WebSocket realtime changes from server
     const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
       if (payload.event === 'db_change') {
+        if (payload.table === 'santri') {
+          if (payload.action === 'delete' && payload.id) {
+            setSantriList(prev => prev.filter(s => s.id !== payload.id));
+          } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
+            const camelData = snakeToCamel(payload.data) as Santri;
+            setSantriList(prev => {
+              const idx = prev.findIndex(s => s.id === camelData.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...camelData };
+                return next;
+              }
+              return [camelData, ...prev];
+            });
+          }
+        } else if (payload.table === 'bendahara') {
+          if (payload.action === 'delete' && payload.id) {
+            setBendaharaList(prev => prev.filter(b => b.id !== payload.id));
+          } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
+            const camelData = snakeToCamel(payload.data) as BendaharaRecord;
+            setBendaharaList(prev => {
+              const idx = prev.findIndex(b => b.id === camelData.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...camelData };
+                return next;
+              }
+              return [camelData, ...prev];
+            });
+          }
+        } else if (payload.table === 'keamanan') {
+          if (payload.action === 'delete' && payload.id) {
+            setKeamananList(prev => prev.filter(k => k.id !== payload.id));
+          } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
+            const camelData = snakeToCamel(payload.data) as KeamananRecord;
+            setKeamananList(prev => {
+              const idx = prev.findIndex(k => k.id === camelData.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...camelData };
+                return next;
+              }
+              return [camelData, ...prev];
+            });
+          }
+        }
         loadAllData();
       }
     });

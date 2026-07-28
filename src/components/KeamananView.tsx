@@ -1651,7 +1651,7 @@ export default function KeamananView({
     // Subscribe to WebSocket realtime changes from server
     const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
       if (payload.event === 'db_change') {
-        if (!payload.table || payload.table === 'perizinan' || payload.action === 'truncate_all') {
+        if (!payload.table || payload.table === 'perizinan' || payload.table === 'keamanan' || payload.table === 'santri' || payload.action === 'truncate_all') {
           loadPerizinan();
         }
       }

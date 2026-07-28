@@ -415,8 +415,39 @@ export default function PendidikanView({
     // Subscribe to WebSocket realtime changes from server
     const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
       if (payload.event === 'db_change') {
-        const eduTables = ['lembaga', 'kelas', 'kategori_rombel', 'kelompok_rombel', 'rombel_assignment'];
+        const eduTables = ['lembaga', 'kelas', 'kategori_rombel', 'kelompok_rombel', 'rombel_assignment', 'santri'];
         if (!payload.table || eduTables.includes(payload.table) || payload.action === 'truncate_all') {
+          if (payload.table === 'rombel_assignment') {
+            if (payload.action === 'delete' && payload.id) {
+              setAssignmentsList(prev => prev.filter(a => a.id !== payload.id));
+            } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
+              const camelAss = snakeToCamel(payload.data) as RombelAssignment;
+              setAssignmentsList(prev => {
+                const idx = prev.findIndex(a => a.id === camelAss.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = { ...next[idx], ...camelAss };
+                  return next;
+                }
+                return [...prev, camelAss];
+              });
+            }
+          } else if (payload.table === 'kelas') {
+            if (payload.action === 'delete' && payload.id) {
+              setKelasList(prev => prev.filter(k => k.id !== payload.id));
+            } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
+              const camelCls = deserializeKelas(snakeToCamel(payload.data));
+              setKelasList(prev => {
+                const idx = prev.findIndex(k => k.id === camelCls.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = { ...next[idx], ...camelCls };
+                  return next;
+                }
+                return [...prev, camelCls];
+              });
+            }
+          }
           loadEducationData();
         }
       }
