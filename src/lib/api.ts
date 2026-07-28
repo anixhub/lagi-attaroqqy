@@ -4,6 +4,7 @@ import { formatBigDigit, mergeIdField } from "./utils";
 
 export interface SupabaseStatus {
   connected: boolean;
+  type?: string;
   url: string | null;
   anonKey?: string | null;
   reason: "connected" | "missing_keys";
@@ -15,7 +16,7 @@ export async function getSupabaseClient(): Promise<any> {
   if (clientInstance) return clientInstance;
   
   const status = await getSupabaseStatus();
-  if (status.connected && status.url && status.anonKey) {
+  if (status.connected && status.url && status.url.startsWith("http") && status.anonKey && status.anonKey !== "mysql-hostinger-active" && status.type !== "mysql") {
     let sanitizedUrl = status.url.trim();
     if (sanitizedUrl.endsWith('/')) {
       sanitizedUrl = sanitizedUrl.slice(0, -1);
@@ -113,9 +114,17 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
-// Helper to resolve dynamic API URLs supporting subpath hosting (e.g., /attaroqqy/)
+// Helper to resolve dynamic API URLs supporting subpath hosting or VITE_API_URL
 export function getApiUrl(endpoint: string): string {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  
+  // Check if VITE_API_URL is configured in environment
+  const envApiUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envApiUrl && typeof envApiUrl === 'string' && envApiUrl.trim() !== '') {
+    const baseUrl = envApiUrl.trim().endsWith('/') ? envApiUrl.trim().slice(0, -1) : envApiUrl.trim();
+    return `${baseUrl}${cleanEndpoint}`;
+  }
+
   if (typeof window !== 'undefined') {
     const pathname = window.location.pathname;
     const parts = pathname.split('/').filter(Boolean);
@@ -130,11 +139,24 @@ export function getApiUrl(endpoint: string): string {
 export async function getSupabaseStatus(): Promise<SupabaseStatus> {
   try {
     const res = await fetch(getApiUrl("/api/supabase-status"));
-    if (!res.ok) throw new Error("Status API error");
-    return await safeJsonParse(res);
+    if (res.ok) {
+      const data = await safeJsonParse(res);
+      if (data && data.connected) return data;
+    }
   } catch (error) {
-    return { connected: false, url: null, reason: "missing_keys" };
+    // API server not reachable
   }
+
+  // Client-side fallback check via localStorage or import.meta.env
+  if (typeof window !== 'undefined') {
+    const localUrl = localStorage.getItem("smartsantri_supabase_url") || (import.meta as any).env?.VITE_SUPABASE_URL;
+    const localKey = localStorage.getItem("smartsantri_supabase_key") || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+    if (localUrl && localKey) {
+      return { connected: true, url: localUrl, anonKey: localKey, reason: "connected" };
+    }
+  }
+
+  return { connected: false, url: null, reason: "missing_keys" };
 }
 
 // Fetch list of items from table (Full online Supabase)

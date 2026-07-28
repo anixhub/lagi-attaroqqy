@@ -101,6 +101,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     // Simulate small latency for premium feels
     await new Promise(resolve => setTimeout(resolve, 500));
 
+    let user: any = null;
+    let needsCancelReset = false;
+
+    // 1. Attempt Express server backend authentication
+    let isServerAuthenticated = false;
     try {
       const response = await fetch(getApiUrl("/api/auth/login"), {
         method: "POST",
@@ -108,17 +113,109 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         body: JSON.stringify({ username: normalizedEmail, password })
       });
 
-      const result = await response.json();
+      const text = await response.text();
+      let result: any;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        result = null;
+      }
 
-      if (!response.ok || !result.success) {
-        setErrorMsg(result.error || 'Email atau Kata Sandi salah atau akun Anda tidak terdaftar.');
+      if (result && result.success) {
+        user = result.user;
+        needsCancelReset = result.needsCancelReset;
+        isServerAuthenticated = true;
+      } else if (result && result.error) {
+        // Express/PHP backend responded explicitly with an error message
+        setErrorMsg(result.error);
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      // Server API unreachable (404 on static hosting like Hostinger / Netlify)
+      console.warn("Backend API unavailable, switching to client-side authentication.", err);
+    }
+
+    // 2. Client-side authentication fallback if server API is unavailable (static hosting mode)
+    if (!isServerAuthenticated) {
+      // Load fresh credentials
+      let creds = allCredentials;
+      if (!creds || creds.length === 0) {
+        try {
+          creds = await fetchTableData<any>(
+            'app_credentials',
+            'smartsantri_app_credentials',
+            [{ id: 'superadmin', username: defaultUser, password: defaultPass, role: 'superadmin', status: 'approved' }]
+          );
+        } catch (e) {
+          creds = [];
+        }
+      }
+
+      // Find matching credential
+      let found = creds.find((c: any) => 
+        (c.username && c.username.trim().toLowerCase() === normalizedEmail) ||
+        (c.id === 'superadmin' && normalizedEmail === defaultUser.toLowerCase())
+      );
+
+      // Check default superadmin fallback
+      if (!found && normalizedEmail === defaultUser.toLowerCase()) {
+        found = {
+          id: 'superadmin',
+          username: defaultUser,
+          password: defaultPass,
+          role: 'superadmin',
+          status: 'approved',
+          displayName: 'Super Admin'
+        };
+      }
+
+      if (!found) {
+        setErrorMsg('Email atau Kata Sandi salah atau akun Anda tidak terdaftar.');
         setLoading(false);
         return;
       }
 
-      const { user } = result;
+      // Check password
+      const storedPassword = found.password || (found.id === 'superadmin' ? defaultPass : '');
+      if (storedPassword && storedPassword !== password) {
+        setErrorMsg('Email atau Kata Sandi salah.');
+        setLoading(false);
+        return;
+      }
 
-      if (result.needsCancelReset) {
+      // Check account status
+      if (found.status === 'pending') {
+        setErrorMsg('Akun Anda masih menunggu persetujuan pendaftaran dari Superadmin.');
+        setLoading(false);
+        return;
+      }
+      if (found.status === 'rejected') {
+        setErrorMsg('Permohonan pendaftaran akun Anda ditolak oleh Superadmin.');
+        setLoading(false);
+        return;
+      }
+      if (found.status === 'reset_requested') {
+        needsCancelReset = true;
+      }
+
+      user = {
+        id: found.id,
+        username: found.username,
+        role: found.role || 'superadmin',
+        displayName: found.displayName || found.username,
+        avatarUrl: found.avatarUrl || found.fotoUrl || null
+      };
+    }
+
+    if (!user) {
+      setErrorMsg('Gagal memverifikasi akun.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (needsCancelReset) {
         setPendingLoginUser(user);
         setShowCancelResetModal(true);
         setLoading(false);
@@ -153,7 +250,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       
       onLoginSuccess();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal terhubung ke server autentikasi.');
+      setErrorMsg(err.message || 'Gagal memproses autentikasi.');
     } finally {
       setLoading(false);
     }
