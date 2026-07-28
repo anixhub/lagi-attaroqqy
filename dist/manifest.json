@@ -1,0 +1,25 @@
+{
+  "name": "Remix: Launch: Go AttarOkey 4.0",
+  "short_name": "Go AttarOkey",
+  "description": "Mobile-first pesantren management portal featuring modular navigation and a searchable secretary dashboard with customizable table or card views.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#047857",
+  "theme_color": "#059669",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 384x384 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
