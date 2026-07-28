@@ -447,8 +447,24 @@ export default function PendidikanView({
                 return [...prev, camelCls];
               });
             }
+          } else if (payload.table === 'lembaga') {
+            if (payload.action === 'delete' && payload.id) {
+              setLembagasList(prev => prev.filter(l => l.id !== payload.id));
+            } else if ((payload.action === 'insert' || payload.action === 'update') && payload.data) {
+              const camelLem = snakeToCamel(payload.data) as Lembaga;
+              setLembagasList(prev => {
+                const idx = prev.findIndex(l => l.id === camelLem.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = { ...next[idx], ...camelLem };
+                  return next;
+                }
+                return [...prev, camelLem];
+              });
+            }
+          } else if (payload.action === 'truncate_all' || !payload.data) {
+            loadEducationData();
           }
-          loadEducationData();
         }
       }
     });
@@ -602,7 +618,7 @@ export default function PendidikanView({
 
         setSantriList(updatedSantriList);
 
-        for (const s of affectedSantri) {
+        await Promise.all(affectedSantri.map(async s => {
           const classes = (s.kelas || '').split(',').map(x => x.trim());
           const newClasses = classes.map(c => c.toLowerCase() === oldName.toLowerCase() ? newName : c);
           const updatedKelasStr = newClasses.join(', ');
@@ -614,7 +630,7 @@ export default function PendidikanView({
           } catch (err) {
             console.error(`Gagal memperbarui nama kelas untuk santri ID ${s.id}:`, err);
           }
-        }
+        }));
       }
     }
   };
@@ -915,12 +931,12 @@ export default function PendidikanView({
     setSantriList(updatedList);
 
     try {
-      for (const id of santriIds) {
-        const s = updatedList.find(x => x.id === id);
-        if (s) {
-          await onUpdateSantri(s);
-        }
-      }
+      await Promise.all(
+        santriIds.map(id => {
+          const s = updatedList.find(x => x.id === id);
+          return s ? onUpdateSantri(s) : Promise.resolve();
+        })
+      );
     } catch (err) {
       console.error("Error in batch updating santri classes:", err);
     }
@@ -1008,24 +1024,22 @@ export default function PendidikanView({
     try {
       // 3. Find and delete existing database assignments for these students in this category
       const toDelete = originalAssignments.filter(a => santriIds.includes(a.santriId) && a.kategoriId === categoryId);
-      for (const a of toDelete) {
-        if (a.id && !a.id.startsWith('temp-')) {
-          await deleteTableRow('rombel_assignment', 'smartsantri_rombel_assignments', a.id);
-        }
-      }
+      await Promise.all(
+        toDelete.map(a => (a.id && !a.id.startsWith('temp-')) ? deleteTableRow('rombel_assignment', 'smartsantri_rombel_assignments', a.id) : Promise.resolve())
+      );
 
       // 4. Insert new assignments if targetGroupId is provided
       if (targetGroupId) {
-        const savedAssignments: RombelAssignment[] = [];
-        for (const sid of santriIds) {
-          const newAss: RombelAssignment = {
-            santriId: sid,
-            kategoriId: categoryId,
-            kelompokId: targetGroupId
-          };
-          const saved = await insertTableRow('rombel_assignment', 'smartsantri_rombel_assignments', newAss);
-          savedAssignments.push(saved);
-        }
+        const savedAssignments = await Promise.all(
+          santriIds.map(sid => {
+            const newAss: RombelAssignment = {
+              santriId: sid,
+              kategoriId: categoryId,
+              kelompokId: targetGroupId
+            };
+            return insertTableRow('rombel_assignment', 'smartsantri_rombel_assignments', newAss);
+          })
+        );
 
         // Replace optimistic temp assignments with real saved ones
         setAssignmentsList(prev => {

@@ -278,8 +278,9 @@ export default function App() {
               return [camelData, ...prev];
             });
           }
+        } else if (payload.action === 'truncate_all' || !payload.data) {
+          loadAllData();
         }
-        loadAllData();
       }
     });
 

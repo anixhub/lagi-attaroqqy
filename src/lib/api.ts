@@ -13,6 +13,7 @@ export interface SupabaseStatus {
 let sharedSocket: WebSocket | null = null;
 const realtimeListeners = new Set<(event: any) => void>();
 let reconnectTimer: any = null;
+let pingInterval: any = null;
 
 function initRealtimeWebSocket() {
   if (typeof window === "undefined") return;
@@ -28,6 +29,13 @@ function initRealtimeWebSocket() {
 
     sharedSocket.onopen = () => {
       console.log("⚡ Realtime WebSocket connected to Express server.");
+      // Keep-alive heartbeat ping every 12 seconds to prevent Cloud Run / Nginx idle timeout
+      if (pingInterval) clearInterval(pingInterval);
+      pingInterval = setInterval(() => {
+        if (sharedSocket && sharedSocket.readyState === WebSocket.OPEN) {
+          sharedSocket.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 12000);
     };
 
     sharedSocket.onmessage = (event) => {
@@ -41,8 +49,9 @@ function initRealtimeWebSocket() {
 
     sharedSocket.onclose = () => {
       sharedSocket = null;
+      if (pingInterval) clearInterval(pingInterval);
       clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(initRealtimeWebSocket, 1500);
+      reconnectTimer = setTimeout(initRealtimeWebSocket, 1000);
     };
 
     sharedSocket.onerror = () => {
@@ -55,6 +64,17 @@ function initRealtimeWebSocket() {
   } catch (err) {
     console.warn("Realtime WebSocket connection failed, retrying...", err);
   }
+}
+
+// Ensure instant reconnection whenever user switches back to tab or focuses window
+if (typeof window !== "undefined") {
+  const handleWakeup = () => {
+    if (!sharedSocket || sharedSocket.readyState === WebSocket.CLOSED || sharedSocket.readyState === WebSocket.CLOSING) {
+      initRealtimeWebSocket();
+    }
+  };
+  window.addEventListener("focus", handleWakeup);
+  document.addEventListener("visibilitychange", handleWakeup);
 }
 
 /**
