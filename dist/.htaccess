@@ -1,0 +1,19 @@
+# ==============================================================================
+# HTACCESS UNTUK SERVING APLIKASI DI HOSTINGER (DIST / PUBLIC_HTML)
+# ==============================================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Direct all /api/ requests to the native Hostinger PHP API router (api/index.php)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+  # 2. Allow direct access to static files or existing folders (images, css, js, uploads)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 3. Route all SPA client routes to index.html
+  RewriteRule ^ index.html [L]
+</IfModule>
