@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { HumasAgenda, Santri, Kompleks, Kamar } from '../types';
 import KamarSub from './humas/KamarSub';
 import DataKamarSantriSub from './humas/DataKamarSantriSub';
-import { fetchTableData, insertTableRow, updateTableRow, deleteTableRow, getSupabaseClient, snakeToCamel } from '../lib/api';
+import { fetchTableData, insertTableRow, updateTableRow, deleteTableRow, subscribeRealtimeChanges, snakeToCamel } from '../lib/api';
 import { DEFAULT_ROLES } from '../lib/permissions';
 
 interface HumasyViewProps {
@@ -100,91 +100,48 @@ export default function HumasyView({
     return INITIAL_KAMAR;
   });
 
-  // Fetch from Supabase / Local fallback on mount with automatic background polling and de-duplication
   useEffect(() => {
+    let isMounted = true;
     const loadHumasData = () => {
       fetchTableData<Kompleks>('kompleks', 'smartsantri_kompleks', INITIAL_KOMPLEKS)
         .then(data => {
+          if (!isMounted) return;
           const unique = data.filter((item, idx, arr) => arr.findIndex(x => x.id === item.id) === idx);
-          setKompleksList(unique);
+          setKompleksList(prev => JSON.stringify(prev) === JSON.stringify(unique) ? prev : unique);
         });
       fetchTableData<Kamar>('kamar', 'smartsantri_kamar', INITIAL_KAMAR)
         .then(data => {
+          if (!isMounted) return;
           const unique = data.filter((item, idx, arr) => arr.findIndex(x => x.id === item.id) === idx);
-          setKamarList(unique);
+          setKamarList(prev => JSON.stringify(prev) === JSON.stringify(unique) ? prev : unique);
         });
     };
 
     loadHumasData();
 
-    // Set up Realtime Websocket Sync
-    let isMounted = true;
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
-
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        if (!payload.table || payload.table === 'kompleks' || payload.table === 'kamar' || payload.action === 'truncate_all') {
+          loadHumasData();
         }
-        supabaseClient = supabase;
-        if (!isMounted) return;
+      }
+    });
 
-        const uniqueChannelName = `humas-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'kompleks' }, (payload: any) => {
-            console.log('Realtime kompleks:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setKompleksList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setKompleksList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setKompleksList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'kamar' }, (payload: any) => {
-            console.log('Realtime kamar:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setKamarList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setKamarList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setKamarList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime di HumasyView:", err);
+    // Re-fetch immediately when window/tab regains focus or visibility
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadHumasData();
       }
     };
-
-    setupRealtime();
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
 
     return () => {
       isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
     };
   }, []);
 

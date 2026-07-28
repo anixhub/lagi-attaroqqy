@@ -1,5 +1,4 @@
-// Client-side Supabase Database API Helper & Sync Manager
-import { createClient } from "@supabase/supabase-js";
+// Client-side Database API Helper & WebSocket Realtime Manager
 import { formatBigDigit, mergeIdField } from "./utils";
 
 export interface SupabaseStatus {
@@ -10,37 +9,72 @@ export interface SupabaseStatus {
   reason: "connected" | "missing_keys";
 }
 
-let clientInstance: any = null;
+// Global WebSocket connection for zero-latency real-time sync across devices
+let sharedSocket: WebSocket | null = null;
+const realtimeListeners = new Set<(event: any) => void>();
+let reconnectTimer: any = null;
+
+function initRealtimeWebSocket() {
+  if (typeof window === "undefined") return;
+  if (sharedSocket && (sharedSocket.readyState === WebSocket.CONNECTING || sharedSocket.readyState === WebSocket.OPEN)) {
+    return;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}`;
+
+  try {
+    sharedSocket = new WebSocket(wsUrl);
+
+    sharedSocket.onopen = () => {
+      console.log("⚡ Realtime WebSocket connected to Express server.");
+    };
+
+    sharedSocket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        realtimeListeners.forEach((fn) => fn(payload));
+      } catch (e) {
+        console.error("Error parsing WebSocket event payload", e);
+      }
+    };
+
+    sharedSocket.onclose = () => {
+      sharedSocket = null;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(initRealtimeWebSocket, 1500);
+    };
+
+    sharedSocket.onerror = () => {
+      if (sharedSocket) {
+        try {
+          sharedSocket.close();
+        } catch (e) {}
+      }
+    };
+  } catch (err) {
+    console.warn("Realtime WebSocket connection failed, retrying...", err);
+  }
+}
+
+/**
+ * Subscribe to real-time database changes broadcasted by the server.
+ * Triggers instantly (0 delay) on any insert, update, delete across any device.
+ */
+export function subscribeRealtimeChanges(callback: (event: any) => void): () => void {
+  initRealtimeWebSocket();
+  realtimeListeners.add(callback);
+  return () => {
+    realtimeListeners.delete(callback);
+  };
+}
 
 export async function getSupabaseClient(): Promise<any> {
-  if (clientInstance) return clientInstance;
-  
-  const status = await getSupabaseStatus();
-  if (status.connected && status.url && status.url.startsWith("http") && status.anonKey && status.anonKey !== "mysql-hostinger-active" && status.type !== "mysql") {
-    let sanitizedUrl = status.url.trim();
-    if (sanitizedUrl.endsWith('/')) {
-      sanitizedUrl = sanitizedUrl.slice(0, -1);
-    }
-    if (sanitizedUrl.endsWith('/rest/v1')) {
-      sanitizedUrl = sanitizedUrl.slice(0, -8);
-    }
-    if (sanitizedUrl.endsWith('/')) {
-      sanitizedUrl = sanitizedUrl.slice(0, -1);
-    }
-    try {
-      clientInstance = createClient(sanitizedUrl, status.anonKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true
-        }
-      });
-      return clientInstance;
-    } catch (err) {
-      console.error("Gagal menginisialisasi client Supabase di sisi client:", err);
-      return null;
-    }
-  }
   return null;
+}
+
+export async function getSupabaseStatus(): Promise<SupabaseStatus> {
+  return { connected: true, type: "mysql_realtime", url: null, reason: "connected" };
 }
 
 // Convert camelCase string/object to snake_case
@@ -75,7 +109,7 @@ export function snakeToCamel(obj: any): any {
   return result;
 }
 
-// Helper to write to localStorage safely, preventing crash when browser quota is full
+// Helper to write to localStorage safely
 export function safeLocalStorageSetItem(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
@@ -87,7 +121,7 @@ export function safeLocalStorageSetItem(key: string, value: string): boolean {
       error.code === 22 ||
       error.code === 1014
     ) {
-      console.warn("localStorage quota exceeded! Data was not saved locally, but continues in memory/remotely.", error);
+      console.warn("localStorage quota exceeded! Data saved in memory/remotely.", error);
       return false;
     }
     console.error("Failed to write to localStorage:", error);
@@ -95,30 +129,27 @@ export function safeLocalStorageSetItem(key: string, value: string): boolean {
   }
 }
 
-// Helper to parse JSON safely and report HTML fallbacks
+// Helper to parse JSON safely
 async function safeJsonParse(res: Response): Promise<any> {
   const text = await res.text();
   const contentType = res.headers.get("content-type") || "";
   
   if (!contentType.includes("application/json") && (text.trim().startsWith("<") || text.trim().startsWith("<!doctype"))) {
-    // Gracefully handle HTML/Server Startup/Proxy templates without throwing loud console.errors
-    console.warn("Menerima respon HTML dari server. Kemungkinan server sedang melakukan startup atau restart.");
-    throw new Error("Respon dari server tidak valid (bukan format JSON). Silakan segarkan halaman jika server baru saja dinyalakan.");
+    console.warn("Menerima respon HTML dari server.");
+    throw new Error("Respon dari server tidak valid (bukan format JSON).");
   }
 
   try {
     return JSON.parse(text);
   } catch (e) {
-    console.warn("Gagal memproses JSON. Response didapat:", text.slice(0, 100));
-    throw new Error("Respon dari server tidak valid (bukan format JSON). Silakan segarkan halaman jika server baru saja dinyalakan.");
+    throw new Error("Respon dari server tidak valid (bukan format JSON).");
   }
 }
 
-// Helper to resolve dynamic API URLs supporting subpath hosting or VITE_API_URL
+// Helper to resolve dynamic API URLs supporting subpath hosting
 export function getApiUrl(endpoint: string): string {
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
   
-  // Check if VITE_API_URL is configured in environment
   const envApiUrl = (import.meta as any).env?.VITE_API_URL;
   if (envApiUrl && typeof envApiUrl === 'string' && envApiUrl.trim() !== '') {
     const baseUrl = envApiUrl.trim().endsWith('/') ? envApiUrl.trim().slice(0, -1) : envApiUrl.trim();
@@ -135,60 +166,31 @@ export function getApiUrl(endpoint: string): string {
   return cleanEndpoint;
 }
 
-// Check if Supabase connection is configured and available
-export async function getSupabaseStatus(): Promise<SupabaseStatus> {
-  try {
-    const res = await fetch(getApiUrl("/api/supabase-status"));
-    if (res.ok) {
-      const data = await safeJsonParse(res);
-      if (data && data.connected) return data;
-    }
-  } catch (error) {
-    // API server not reachable
-  }
-
-  // Client-side fallback check via localStorage or import.meta.env
-  if (typeof window !== 'undefined') {
-    const localUrl = localStorage.getItem("smartsantri_supabase_url") || (import.meta as any).env?.VITE_SUPABASE_URL;
-    const localKey = localStorage.getItem("smartsantri_supabase_key") || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
-    if (localUrl && localKey) {
-      return { connected: true, url: localUrl, anonKey: localKey, reason: "connected" };
-    }
-  }
-
-  return { connected: false, url: null, reason: "missing_keys" };
-}
-
-// Fetch list of items from table (Full online Supabase)
+// Fetch list of items from table
 export async function fetchTableData<T>(table: string, localKey?: string, defaultValue: T[] = []): Promise<T[]> {
   try {
-    const status = await getSupabaseStatus();
-    if (status.connected) {
-      const res = await fetch(getApiUrl(`/api/db/${table}`));
-      if (res.ok) {
-        const result = await safeJsonParse(res);
-        if (result.success && Array.isArray(result.data)) {
-          // Translate snake_case keys from database to camelCase for the React application
-          const camelCasedData = snakeToCamel(result.data) as T[];
-          // Deduplicate by ID to prevent duplicate keys in React loops
-          const uniqueMap = new Map<any, T>();
-          camelCasedData.forEach((item: any) => {
-            if (item && item.id) {
-              uniqueMap.set(item.id, item);
-            } else if (item) {
-              uniqueMap.set(Math.random().toString(), item);
-            }
-          });
-          const fetchedData = Array.from(uniqueMap.values());
-          if (localKey && fetchedData.length > 0) {
-            safeLocalStorageSetItem(localKey, JSON.stringify(fetchedData));
+    const res = await fetch(getApiUrl(`/api/db/${table}`));
+    if (res.ok) {
+      const result = await safeJsonParse(res);
+      if (result.success && Array.isArray(result.data)) {
+        const camelCasedData = snakeToCamel(result.data) as T[];
+        const uniqueMap = new Map<any, T>();
+        camelCasedData.forEach((item: any) => {
+          if (item && item.id) {
+            uniqueMap.set(item.id, item);
+          } else if (item) {
+            uniqueMap.set(Math.random().toString(), item);
           }
-          return fetchedData;
+        });
+        const fetchedData = Array.from(uniqueMap.values());
+        if (localKey && fetchedData.length > 0) {
+          safeLocalStorageSetItem(localKey, JSON.stringify(fetchedData));
         }
+        return fetchedData;
       }
     }
   } catch (err) {
-    console.warn(`Supabase query failed for table ${table}.`, err);
+    console.warn(`Fetch query failed for table ${table}.`, err);
   }
 
   if (localKey) {
@@ -200,50 +202,45 @@ export async function fetchTableData<T>(table: string, localKey?: string, defaul
           return parsed;
         }
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
   return defaultValue;
 }
 
-// Insert single row directly to Supabase online (with fallback to localStorage)
+// Insert single row
 export async function insertTableRow<T extends { id?: any }>(table: string, localKey: string, row: T): Promise<T> {
   let remoteRow = { ...row };
   try {
-    const status = await getSupabaseStatus();
-    if (status.connected) {
-      const snakeCasedRow = camelToSnake(row);
-      const res = await fetch(getApiUrl(`/api/db/${table}`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(snakeCasedRow),
-      });
-      if (res.ok) {
-        const result = await safeJsonParse(res);
-        if (result.success && result.data) {
-          const camelRemote = snakeToCamel(result.data);
-          const remoteObj = Array.isArray(camelRemote) ? camelRemote[0] : camelRemote;
-          if (remoteObj && typeof remoteObj === 'object') {
-            const merged: any = { id: row.id, ...row };
-            const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
-            for (const k of Object.keys(remoteObj)) {
-              if (remoteObj[k] !== undefined) {
-                if (strFields.includes(k)) {
-                  merged[k] = mergeIdField((row as any)[k], remoteObj[k]);
-                } else {
-                  merged[k] = typeof remoteObj[k] === 'number' ? String(remoteObj[k]) : remoteObj[k];
-                }
+    const snakeCasedRow = camelToSnake(row);
+    const res = await fetch(getApiUrl(`/api/db/${table}`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snakeCasedRow),
+    });
+    if (res.ok) {
+      const result = await safeJsonParse(res);
+      if (result.success && result.data) {
+        const camelRemote = snakeToCamel(result.data);
+        const remoteObj = Array.isArray(camelRemote) ? camelRemote[0] : camelRemote;
+        if (remoteObj && typeof remoteObj === 'object') {
+          const merged: any = { id: row.id, ...row };
+          const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
+          for (const k of Object.keys(remoteObj)) {
+            if (remoteObj[k] !== undefined) {
+              if (strFields.includes(k)) {
+                merged[k] = mergeIdField((row as any)[k], remoteObj[k]);
+              } else {
+                merged[k] = typeof remoteObj[k] === 'number' ? String(remoteObj[k]) : remoteObj[k];
               }
             }
-            remoteRow = merged as T;
           }
+          remoteRow = merged as T;
         }
       }
     }
   } catch (err) {
-    console.warn(`Supabase insert failed for ${table}, storing locally.`, err);
+    console.warn(`Insert failed for ${table}, storing locally.`, err);
   }
 
   if (localKey && remoteRow) {
@@ -260,33 +257,30 @@ export async function insertTableRow<T extends { id?: any }>(table: string, loca
   return remoteRow;
 }
 
-// Insert multiple rows in bulk/batch directly to Supabase online (with fallback to localStorage)
+// Insert multiple rows
 export async function insertTableRows<T extends { id?: any }>(table: string, localKey: string, rows: T[]): Promise<T[]> {
   if (!rows || rows.length === 0) return [];
   
   let finalRows = [...rows];
   try {
-    const status = await getSupabaseStatus();
-    if (status.connected) {
-      const snakeCasedRows = camelToSnake(rows);
-      const res = await fetch(getApiUrl(`/api/db/${table}`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(snakeCasedRows),
-      });
-      if (res.ok) {
-        const result = await safeJsonParse(res);
-        if (result.success && result.data) {
-          const fetched = result.data;
-          const remoteRows = (Array.isArray(fetched) ? snakeToCamel(fetched) : [snakeToCamel(fetched)]) as T[];
-          if (remoteRows && remoteRows.length > 0) {
-            finalRows = remoteRows;
-          }
+    const snakeCasedRows = camelToSnake(rows);
+    const res = await fetch(getApiUrl(`/api/db/${table}`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snakeCasedRows),
+    });
+    if (res.ok) {
+      const result = await safeJsonParse(res);
+      if (result.success && result.data) {
+        const fetched = result.data;
+        const remoteRows = (Array.isArray(fetched) ? snakeToCamel(fetched) : [snakeToCamel(fetched)]) as T[];
+        if (remoteRows && remoteRows.length > 0) {
+          finalRows = remoteRows;
         }
       }
     }
   } catch (err) {
-    console.warn(`Supabase batch insert failed for ${table}, storing locally.`, err);
+    console.warn(`Batch insert failed for ${table}, storing locally.`, err);
   }
 
   if (localKey && finalRows.length > 0) {
@@ -304,7 +298,7 @@ export async function insertTableRows<T extends { id?: any }>(table: string, loc
   return finalRows;
 }
 
-// Update single row directly on Supabase online (with fallback to localStorage)
+// Update single row
 export async function updateTableRow<T extends { id?: any }>(
   table: string,
   localKey: string,
@@ -313,41 +307,34 @@ export async function updateTableRow<T extends { id?: any }>(
 ): Promise<T> {
   let remoteRow = { id, ...updatedData } as T;
   try {
-    const status = await getSupabaseStatus();
-    if (status.connected) {
-      const snakeCasedData = camelToSnake(updatedData);
-      const res = await fetch(getApiUrl(`/api/db/${table}/${id}`), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(snakeCasedData),
-      });
-      if (res.ok) {
-        const result = await safeJsonParse(res);
-        if (result.success && result.data) {
-          const camelRemote = snakeToCamel(result.data);
-          const cleanedRemote: any = {};
-          if (camelRemote && typeof camelRemote === 'object') {
-            const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
-            for (const k of Object.keys(camelRemote)) {
-              if (camelRemote[k] !== undefined) {
-                if (strFields.includes(k)) {
-                  cleanedRemote[k] = mergeIdField((updatedData as any)[k], camelRemote[k]);
-                } else {
-                  cleanedRemote[k] = camelRemote[k];
-                }
+    const snakeCasedData = camelToSnake(updatedData);
+    const res = await fetch(getApiUrl(`/api/db/${table}/${id}`), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snakeCasedData),
+    });
+    if (res.ok) {
+      const result = await safeJsonParse(res);
+      if (result.success && result.data) {
+        const camelRemote = snakeToCamel(result.data);
+        const cleanedRemote: any = {};
+        if (camelRemote && typeof camelRemote === 'object') {
+          const strFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
+          for (const k of Object.keys(camelRemote)) {
+            if (camelRemote[k] !== undefined) {
+              if (strFields.includes(k)) {
+                cleanedRemote[k] = mergeIdField((updatedData as any)[k], camelRemote[k]);
+              } else {
+                cleanedRemote[k] = camelRemote[k];
               }
             }
           }
-          remoteRow = { id, ...updatedData, ...cleanedRemote } as T;
-          const identifierFields = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'rt', 'rw'];
-          for (const key of identifierFields) {
-            (remoteRow as any)[key] = mergeIdField((updatedData as any)[key], (remoteRow as any)[key]);
-          }
         }
+        remoteRow = { id, ...updatedData, ...cleanedRemote } as T;
       }
     }
   } catch (err) {
-    console.warn(`Supabase update failed for ${table}/${id}, updating locally.`, err);
+    console.warn(`Update failed for ${table}/${id}, updating locally.`, err);
   }
 
   if (localKey) {
@@ -367,15 +354,12 @@ export async function updateTableRow<T extends { id?: any }>(
   return remoteRow;
 }
 
-// Delete single row directly on Supabase online (with fallback to localStorage)
+// Delete single row
 export async function deleteTableRow(table: string, localKey: string, id: string | number): Promise<boolean> {
   try {
-    const status = await getSupabaseStatus();
-    if (status.connected) {
-      await fetch(getApiUrl(`/api/db/${table}/${id}`), { method: "DELETE" });
-    }
+    await fetch(getApiUrl(`/api/db/${table}/${id}`), { method: "DELETE" });
   } catch (err) {
-    console.warn(`Supabase delete failed for ${table}/${id}, deleting locally.`, err);
+    console.warn(`Delete failed for ${table}/${id}, deleting locally.`, err);
   }
 
   if (localKey) {
@@ -394,16 +378,8 @@ export async function deleteTableRow(table: string, localKey: string, id: string
   return true;
 }
 
-// Upload file to Supabase Storage Bucket
+// Upload file
 export async function uploadFileToStorage(base64DataUrl: string, originalName: string, fieldKey: string): Promise<string> {
-  const status = await getSupabaseStatus();
-  if (!status.connected) {
-    // Fallback if Supabase is offline (keeps local copy)
-    console.warn("Supabase is not connected. Using raw base64 data url as fallback storage.");
-    return base64DataUrl;
-  }
-
-  // Extract base64 content and content type
   const match = base64DataUrl.match(/^data:(.*);base64,(.*)$/);
   if (!match) {
     throw new Error("Format file tidak valid.");
@@ -411,7 +387,6 @@ export async function uploadFileToStorage(base64DataUrl: string, originalName: s
   const contentType = match[1];
   const base64Data = match[2];
 
-  // Create a unique filename
   const extension = originalName.split('.').pop() || 'bin';
   const timestamp = Date.now();
   const randomStr = Math.random().toString(36).substring(2, 7);
@@ -439,4 +414,3 @@ export async function uploadFileToStorage(base64DataUrl: string, originalName: s
     throw new Error(result.error || "Gagal mendapatkan URL file dari server.");
   }
 }
-

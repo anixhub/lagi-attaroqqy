@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users } from 'lucide-react';
-import { getSupabaseClient } from '../lib/api';
+import { subscribeRealtimeChanges } from '../lib/api';
 
 export interface OnlineUserInfo {
+  id?: string;
   username: string;
   displayName: string;
   role: string;
@@ -29,15 +30,7 @@ export default function OnlineUsers() {
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    let activeChannel: any = null;
-    let supabaseClient: any = null;
-    let heartbeatInterval: any = null;
-
-    // Generate unique session ID for this browser instance/tab
-    const tabSessionId = Math.random().toString(36).substring(2, 9);
-
-    // Get current logged in user details from localStorage
+    // Current user details
     const currentUsername = localStorage.getItem('smartsantri_active_username') || 'pengguna';
     const currentDisplayName = localStorage.getItem('smartsantri_active_display_name') || 'Admin Utama';
     const currentRole = localStorage.getItem('smartsantri_active_role') || 'superadmin';
@@ -51,101 +44,32 @@ export default function OnlineUsers() {
       onlineAt: new Date().toISOString()
     };
 
-    // Default local user state
     setOnlineUsers([currentUserObj]);
 
-    const syncPresenceState = (channel: any) => {
-      if (!channel || !isMounted) return;
-      const presenceState = channel.presenceState();
-      const userMap = new Map<string, OnlineUserInfo>();
+    // Subscribe to WebSocket realtime presence events
+    const unsubscribe = subscribeRealtimeChanges((msg: any) => {
+      if (msg.type === "online_users" && Array.isArray(msg.users)) {
+        const mappedUsers: OnlineUserInfo[] = msg.users.map((u: any) => ({
+          username: u.username || u.name || 'pengguna',
+          displayName: u.displayName || u.name || 'Pengguna',
+          role: u.role || 'pengguna',
+          avatar: u.avatar || '',
+          onlineAt: u.onlineAt || new Date().toISOString()
+        }));
 
-      // Always include current active user
-      if (currentUsername) {
+        // Always ensure local active user is included
+        const userMap = new Map<string, OnlineUserInfo>();
         userMap.set(currentUsername.toLowerCase(), currentUserObj);
-      }
-
-      Object.keys(presenceState).forEach((key) => {
-        const presences = presenceState[key] as any[];
-        if (presences && presences.length > 0) {
-          presences.forEach((p) => {
-            const uname = (p.username || key.split('_')[0] || 'pengguna').toLowerCase();
-            if (uname) {
-              userMap.set(uname, {
-                username: p.username || uname,
-                displayName: p.displayName || p.username || uname,
-                role: p.role || 'pengguna',
-                avatar: p.avatar || '',
-                onlineAt: p.onlineAt || new Date().toISOString()
-              });
-            }
-          });
-        }
-      });
-
-      const uniqueUserList = Array.from(userMap.values());
-      if (uniqueUserList.length > 0) {
-        setOnlineUsers(uniqueUserList);
-      }
-    };
-
-    const initPresence = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase || !isMounted) return;
-        supabaseClient = supabase;
-
-        // Unique session key per connected tab
-        const sessionPresenceKey = `${currentUsername.toLowerCase()}_${tabSessionId}`;
-
-        const channel = supabase.channel('online-presence-room', {
-          config: {
-            presence: {
-              key: sessionPresenceKey,
-            },
-          },
+        mappedUsers.forEach(u => {
+          if (u.username) userMap.set(u.username.toLowerCase(), u);
         });
 
-        activeChannel = channel;
-
-        channel
-          .on('presence', { event: 'sync' }, () => {
-            syncPresenceState(channel);
-          })
-          .on('presence', { event: 'join' }, () => {
-            syncPresenceState(channel);
-          })
-          .on('presence', { event: 'leave' }, () => {
-            syncPresenceState(channel);
-          });
-
-        channel.subscribe(async (status: string) => {
-          if (status === 'SUBSCRIBED' && isMounted) {
-            await channel.track(currentUserObj).catch(() => {});
-            syncPresenceState(channel);
-
-            // Heartbeat every 10 seconds to keep presence active across all connected laptops
-            heartbeatInterval = setInterval(() => {
-              if (isMounted && activeChannel) {
-                activeChannel.track(currentUserObj).catch(() => {});
-              }
-            }, 10000);
-          }
-        });
-      } catch (err) {
-        console.warn('Failed to setup presence tracking:', err);
+        setOnlineUsers(Array.from(userMap.values()));
       }
-    };
-
-    initPresence();
+    });
 
     return () => {
-      isMounted = false;
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-      }
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribe();
     };
   }, []);
 
@@ -211,7 +135,7 @@ export default function OnlineUsers() {
                     </div>
                   )}
                 </div>
-                {/* Subtle green indicator dot */}
+                {/* Green indicator dot */}
                 <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-white pointer-events-none" />
               </div>
 

@@ -5,7 +5,7 @@ import Header from './components/Header';
 import Drawer from './components/Drawer';
 import Sidebar from './components/Sidebar';
 import HelpModal from './components/HelpModal';
-import { fetchTableData, insertTableRow, insertTableRows, updateTableRow, deleteTableRow, getSupabaseClient, snakeToCamel, safeLocalStorageSetItem } from './lib/api';
+import { fetchTableData, insertTableRow, insertTableRows, updateTableRow, deleteTableRow, subscribeRealtimeChanges, snakeToCamel, safeLocalStorageSetItem } from './lib/api';
 
 // Views
 import HomeView from './components/HomeView';
@@ -195,7 +195,11 @@ export default function App() {
               .filter((op: { data: Santri; timestamp: number }) => !deletedSantriIds.current.has(op.data.id) && !cleaned.some(c => c.id === op.data.id))
               .map((op: { data: Santri; timestamp: number }) => op.data);
 
-            return [...brandNewPending, ...updatedCleaned];
+            const resultList = [...brandNewPending, ...updatedCleaned];
+            if (JSON.stringify(prev) === JSON.stringify(resultList)) {
+              return prev;
+            }
+            return resultList;
           });
 
           if (hasDummy) {
@@ -212,133 +216,40 @@ export default function App() {
             });
           }
         });
+
       fetchTableData<BendaharaRecord>('bendahara', 'smartsantri_bendaharaList', [])
-        .then(setBendaharaList);
+        .then(data => {
+          setBendaharaList(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
+        });
+
       fetchTableData<KeamananRecord>('keamanan', 'smartsantri_keamananList', [])
-        .then(setKeamananList);
+        .then(data => {
+          setKeamananList(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
+        });
     };
 
     loadAllData();
-    
-    let isMounted = true;
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
 
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
-        }
-        supabaseClient = supabase;
-        if (!isMounted) return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        loadAllData();
+      }
+    });
 
-        const uniqueChannelName = `schema-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'santri' }, (payload: any) => {
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = cleanSantri(snakeToCamel(payload.new));
-              if (deletedSantriIds.current.has(newRow.id)) return;
-              setSantriList(prev => {
-                if (deletedSantriIds.current.has(newRow.id)) return prev;
-                const existing = prev.find(item => item.id === newRow.id);
-                if (existing) {
-                  const mergedRow = {
-                    ...existing,
-                    ...newRow,
-                    nik: mergeIdField(existing.nik, newRow.nik),
-                    nisn: mergeIdField(existing.nisn, newRow.nisn),
-                    noKk: mergeIdField(existing.noKk, newRow.noKk),
-                    nikAyah: mergeIdField(existing.nikAyah, newRow.nikAyah),
-                    nikIbu: mergeIdField(existing.nikIbu, newRow.nikIbu),
-                    noHp: mergeIdField(existing.noHp, newRow.noHp),
-                  };
-                  return prev.map(item => item.id === newRow.id ? mergedRow : item);
-                }
-                return [newRow, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = cleanSantri(snakeToCamel(payload.new));
-              if (deletedSantriIds.current.has(updatedRow.id)) return;
-              setSantriList(prev => prev.map(item => {
-                if (item.id !== updatedRow.id) return item;
-                // If there is an active pending operation for this item, keep local pending data
-                const pending = pendingOperations.current.get(item.id);
-                if (pending && (Date.now() - pending.timestamp < 15000)) {
-                  return pending.data;
-                }
-                // Safely merge non-undefined fields onto item
-                const merged = { ...item };
-                if (updatedRow && typeof updatedRow === 'object') {
-                  for (const k of Object.keys(updatedRow)) {
-                    if (updatedRow[k] !== undefined) {
-                      (merged as any)[k] = updatedRow[k];
-                    }
-                  }
-                }
-                const idFields: (keyof Santri)[] = ['nik', 'nisn', 'noKk', 'nikAyah', 'nikIbu', 'noHp', 'nism', 'nis', 'rt', 'rw'];
-                for (const field of idFields) {
-                  (merged as any)[field] = mergeIdField(item[field], merged[field]);
-                }
-                return merged;
-              }));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              deletedSantriIds.current.set(oldId, Date.now());
-              setSantriList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'bendahara' }, (payload: any) => {
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setBendaharaList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [newRow, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setBendaharaList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setBendaharaList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'keamanan' }, (payload: any) => {
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setKeamananList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [newRow, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setKeamananList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setKeamananList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime:", err);
+    // Re-fetch immediately when screen/tab regains focus or visibility
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
       }
     };
-
-    setupRealtime();
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
 
     return () => {
-      isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
     };
   }, []);
 

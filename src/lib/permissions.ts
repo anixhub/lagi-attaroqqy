@@ -16,8 +16,7 @@ export interface AccountRole {
   permissions: { [key: string]: boolean };
 }
 
-// Dynamic builder to construct full 20 permissions dict per role (10 modules x 2 actions: view, write)
-// Specific modules get view & write based on activeActions, all other modules get view only.
+// Dynamic builder to construct full 20 permissions dict per role
 export const buildPermissions = (activeModules: string | string[], activeActions: string[]) => {
   const perms: { [key: string]: boolean } = {};
   const modules = [
@@ -37,7 +36,6 @@ export const buildPermissions = (activeModules: string | string[], activeActions
       if (activeList.includes('superadmin')) {
         perms[key] = true;
       } else {
-        // Automatically check corresponding module(s) by default
         let matched = activeList.includes(m);
         if (activeList.includes('bendahara_pusat') && (m === 'bendahara_putra' || m === 'bendahara_putri')) {
           matched = true;
@@ -49,7 +47,6 @@ export const buildPermissions = (activeModules: string | string[], activeActions
         if (matched) {
           perms[key] = activeActions.includes(a);
         } else {
-          // Other modules can only view, no write
           perms[key] = a === 'view';
         }
       }
@@ -184,20 +181,8 @@ export const DEFAULT_ROLES: AccountRole[] = [
 
 import { getApiUrl } from './api';
 
-export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole[]> {
+export async function fetchAndSyncPermissionsFromDatabase(): Promise<AccountRole[]> {
   try {
-    const statusRes = await fetch(getApiUrl("/api/supabase-status")).catch(() => null);
-    if (!statusRes || !statusRes.ok) return DEFAULT_ROLES;
-    
-    let status;
-    try {
-      status = await statusRes.json();
-    } catch (e) {
-      return DEFAULT_ROLES;
-    }
-    
-    if (!status || !status.connected) return DEFAULT_ROLES;
-
     const [rolesRes, permsRes, rolePermsRes] = await Promise.all([
       fetch(getApiUrl("/api/db/roles")).catch(() => null),
       fetch(getApiUrl("/api/db/permissions")).catch(() => null),
@@ -226,11 +211,9 @@ export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole
     const dbRolePerms = rolePermsData.data || [];
 
     const updatedRoles: AccountRole[] = DEFAULT_ROLES.map(defaultRole => {
-      // Find the corresponding role in database
       const matchedDbRole = dbRoles.find((r: any) => r.name === defaultRole.id);
       if (!matchedDbRole) return defaultRole;
 
-      // Find all permissions assigned to this role in database
       const assignedPermIds = dbRolePerms
         .filter((rp: any) => String(rp.role_id) === String(matchedDbRole.id))
         .map((rp: any) => rp.permission_id);
@@ -271,5 +254,4 @@ export async function fetchAndSyncPermissionsFromSupabase(): Promise<AccountRole
   }
 }
 
-export const fetchAndSyncPermissionsFromDatabase = fetchAndSyncPermissionsFromSupabase;
-
+export const fetchAndSyncPermissionsFromSupabase = fetchAndSyncPermissionsFromDatabase;

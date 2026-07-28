@@ -45,7 +45,7 @@ import {
   Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { camelToSnake, snakeToCamel, getSupabaseStatus, updateTableRow, insertTableRow, fetchTableData, deleteTableRow, uploadFileToStorage, getSupabaseClient, getApiUrl } from '../lib/api';
+import { camelToSnake, snakeToCamel, getSupabaseStatus, updateTableRow, insertTableRow, fetchTableData, deleteTableRow, uploadFileToStorage, subscribeRealtimeChanges, getApiUrl } from '../lib/api';
 import { AppCredentials, Santri, KeamananRecord, RombelAssignment, KelompokRombel, Lembaga, Kelas, KategoriRombel } from '../types';
 import { compressImage } from '../lib/utils';
 import ProfilPesantrenSub from './ProfilPesantrenSub';
@@ -967,104 +967,19 @@ export default function PengaturanView({
     
     loadDataFromSupabase();
 
-    // Set up Realtime Websocket Sync
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
-
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        const settingsTables = ['pesantren_profile', 'app_credentials'];
+        if (!payload.table || settingsTables.includes(payload.table) || payload.action === 'truncate_all') {
+          loadDataFromSupabase();
         }
-        supabaseClient = supabase;
-        if (!isMounted) return;
-
-        const uniqueChannelName = `pengaturan-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'pesantren_profile' }, (payload: any) => {
-            console.log('Realtime pesantren_profile:', payload);
-            if (!isMounted) return;
-            const mainProfile = payload.new;
-            if (mainProfile) {
-              const mapped: PesantrenProfile = {
-                namaPesantren: mainProfile.nama_pesantren ?? mainProfile.namaPesantren ?? DEFAULT_PROFILE.namaPesantren,
-                namaYayasan: mainProfile.nama_yayasan ?? mainProfile.namaYayasan ?? DEFAULT_PROFILE.namaYayasan,
-                nspp: mainProfile.nspp ?? DEFAULT_PROFILE.nspp,
-                nomorNotaris: mainProfile.nomor_notaris ?? mainProfile.nomorNotaris ?? DEFAULT_PROFILE.nomorNotaris,
-                alamat: mainProfile.alamat ?? DEFAULT_PROFILE.alamat,
-                desa: mainProfile.desa ?? DEFAULT_PROFILE.desa,
-                kecamatan: mainProfile.kecamatan ?? DEFAULT_PROFILE.kecamatan,
-                kabupaten: mainProfile.kabupaten ?? DEFAULT_PROFILE.kabupaten,
-                provinsi: mainProfile.provinsi ?? DEFAULT_PROFILE.provinsi,
-                kodePos: mainProfile.kode_pos ?? mainProfile.kodePos ?? DEFAULT_PROFILE.kodePos,
-                telepon: mainProfile.telepon ?? DEFAULT_PROFILE.telepon,
-                email: mainProfile.email ?? DEFAULT_PROFILE.email,
-                website: mainProfile.website ?? DEFAULT_PROFILE.website,
-                namaPengasuh: mainProfile.nama_pengasuh ?? mainProfile.namaPengasuh ?? DEFAULT_PROFILE.namaPengasuh,
-                namaWakilPengasuh: mainProfile.nama_wakil_pengasuh ?? mainProfile.namaWakilPengasuh ?? DEFAULT_PROFILE.namaWakilPengasuh,
-                namaKetuaYayasan: mainProfile.nama_ketua_yayasan ?? mainProfile.namaKetuaYayasan ?? DEFAULT_PROFILE.namaKetuaYayasan,
-                namaKetuaPondok: mainProfile.nama_ketua_pondok ?? mainProfile.namaKetuaPondok ?? DEFAULT_PROFILE.namaKetuaPondok,
-                namaSekretaris: mainProfile.nama_sekretaris ?? mainProfile.namaSekretaris ?? DEFAULT_PROFILE.namaSekretaris,
-                namaBendahara: mainProfile.nama_bendahara ?? mainProfile.namaBendahara ?? DEFAULT_PROFILE.namaBendahara,
-                namaKetuaKeamanan: mainProfile.nama_ketua_keamanan ?? mainProfile.namaKetuaKeamanan ?? DEFAULT_PROFILE.namaKetuaKeamanan,
-                namaKetuaPendidikan: mainProfile.nama_ketua_pendidikan ?? mainProfile.namaKetuaPendidikan ?? DEFAULT_PROFILE.namaKetuaPendidikan,
-                kotaTandaTangan: mainProfile.kota_tanda_tangan ?? mainProfile.kotaTandaTangan ?? DEFAULT_PROFILE.kotaTandaTangan,
-                logoStyle: mainProfile.logo_style ?? mainProfile.logoStyle ?? DEFAULT_PROFILE.logoStyle,
-                kopTambahan1: mainProfile.kop_tambahan1 ?? mainProfile.kop_tambahan1 ?? DEFAULT_PROFILE.kopTambahan1,
-                kopTambahan2: mainProfile.kop_tambahan2 ?? mainProfile.kopTambahan2 ?? DEFAULT_PROFILE.kopTambahan2,
-                logoUrl: mainProfile.logo_url ?? mainProfile.logoUrl ?? '',
-              };
-              setProfile(mapped);
-              setPersistedProfile(mapped);
-              localStorage.setItem('smartsantri_pesantren_profile', JSON.stringify(mapped));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'app_credentials' }, (payload: any) => {
-            console.log('Realtime app_credentials:', payload);
-            if (!isMounted) return;
-            const updatedCred = snakeToCamel(payload.new);
-            const currentUsername = localStorage.getItem('smartsantri_active_username');
-            const activeRole = localStorage.getItem('smartsantri_active_role');
-            
-            if (updatedCred && (
-              (updatedCred.username && updatedCred.username.toLowerCase() === currentUsername?.toLowerCase()) ||
-              (activeRole === 'superadmin' && updatedCred.id === 'superadmin')
-            )) {
-              setSecUserId(updatedCred.id);
-              let displayNameValue = updatedCred.displayName || updatedCred.role ? updatedCred.role.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Admin Utama';
-              setSecDisplayName(displayNameValue);
-              localStorage.setItem('smartsantri_active_display_name', displayNameValue);
-
-              const avatarValue = updatedCred.avatarUrl || '';
-              setSecAvatar(avatarValue);
-              localStorage.setItem('smartsantri_profile_avatar', avatarValue);
-
-              if (updatedCred.username) {
-                setSecUsername(updatedCred.username);
-                setSecNewUsername(updatedCred.username);
-                localStorage.setItem('smartsantri_active_username', updatedCred.username);
-              }
-
-              if (updatedCred.password) {
-                setSecPassword(updatedCred.password);
-              }
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime di PengaturanView:", err);
       }
-    };
-
-    setupRealtime();
+    });
 
     return () => {
       isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
     };
   }, []);
 

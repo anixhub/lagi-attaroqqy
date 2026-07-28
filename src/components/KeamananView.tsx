@@ -70,7 +70,7 @@ import { INITIAL_PERIZINAN } from '../data';
 import SantriDetailModal from './sekretaris/SantriDetailModal';
 import { BirthDatePicker } from './sekretaris/BirthDatePicker';
 import { getPesantrenProfile } from './SekretarisHelper';
-import { fetchTableData, insertTableRow, updateTableRow, deleteTableRow, getSupabaseClient, snakeToCamel } from '../lib/api';
+import { fetchTableData, insertTableRow, updateTableRow, deleteTableRow, subscribeRealtimeChanges, snakeToCamel } from '../lib/api';
 import { DEFAULT_ROLES } from '../lib/permissions';
 
 const springTransition = {
@@ -1639,7 +1639,7 @@ export default function KeamananView({
       try {
         const data = await fetchTableData<PerizinanRecord>('perizinan', 'smartsantri_perizinan', INITIAL_PERIZINAN);
         if (isMounted) {
-          setPerizinanList(data);
+          setPerizinanList(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
         }
       } catch (err) {
         console.error("Gagal memuat data perizinan dari Supabase:", err);
@@ -1648,54 +1648,29 @@ export default function KeamananView({
 
     loadPerizinan();
 
-    // Set up Realtime Websocket Sync
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
-
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        if (!payload.table || payload.table === 'perizinan' || payload.action === 'truncate_all') {
+          loadPerizinan();
         }
-        supabaseClient = supabase;
-        if (!isMounted) return;
+      }
+    });
 
-        const uniqueChannelName = `perizinan-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'perizinan' }, (payload: any) => {
-            console.log('Realtime perizinan:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setPerizinanList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [newRow, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setPerizinanList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setPerizinanList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime perizinan:", err);
+    // Re-fetch immediately when screen/tab regains focus or visibility
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadPerizinan();
       }
     };
-
-    setupRealtime();
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
 
     return () => {
       isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
     };
   }, []);
 
@@ -2119,67 +2094,18 @@ export default function KeamananView({
     
     loadPeriods(true);
 
-    // Set up Realtime Websocket Sync
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
-
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        if (!payload.table || payload.table === 'periode' || payload.action === 'truncate_all') {
+          loadPeriods(true);
         }
-        supabaseClient = supabase;
-        if (!isMounted) return;
-
-        const uniqueChannelName = `periode-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'periode' }, (payload: any) => {
-            console.log('Realtime periode:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setPeriodes(prev => {
-                const customOnly = prev.filter(p => p.id !== 'Semua');
-                if (customOnly.some(item => item.id === newRow.id)) {
-                  const updatedCustom = customOnly.map(item => item.id === newRow.id ? newRow : item);
-                  return [...PREDEFINED_PERIODES, ...updatedCustom];
-                }
-                return [...PREDEFINED_PERIODES, ...customOnly, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setPeriodes(prev => {
-                const customOnly = prev.filter(p => p.id !== 'Semua');
-                const updatedCustom = customOnly.map(item => item.id === updatedRow.id ? updatedRow : item);
-                return [...PREDEFINED_PERIODES, ...updatedCustom];
-              });
-              if (updatedRow.isActive) {
-                setSelectedPeriode(updatedRow.id);
-              }
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setPeriodes(prev => {
-                const customOnly = prev.filter(p => p.id !== 'Semua' && p.id !== oldId);
-                return [...PREDEFINED_PERIODES, ...customOnly];
-              });
-              setSelectedPeriode(prev => prev === oldId ? 'Semua' : prev);
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime periode:", err);
       }
-    };
-
-    setupRealtime();
+    });
 
     return () => {
       isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
     };
   }, [PREDEFINED_PERIODES]);
   const activePeriodeObj = useMemo(() => {
@@ -3517,54 +3443,18 @@ export default function KeamananView({
 
     loadKatalog();
 
-    // Set up Realtime Websocket Sync
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
-
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        if (!payload.table || payload.table === 'katalog_pelanggaran' || payload.action === 'truncate_all') {
+          loadKatalog();
         }
-        supabaseClient = supabase;
-        if (!isMounted) return;
-
-        const uniqueChannelName = `katalog-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'katalog_pelanggaran' }, (payload: any) => {
-            console.log('Realtime katalog_pelanggaran:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setKatalog(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setKatalog(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setKatalog(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime katalog_pelanggaran:", err);
       }
-    };
-
-    setupRealtime();
+    });
 
     return () => {
       isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
     };
   }, []);
 

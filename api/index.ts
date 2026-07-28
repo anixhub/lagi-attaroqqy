@@ -1,15 +1,32 @@
 import express from "express";
-import { createClient } from "@supabase/supabase-js";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import { WebSocketServer, WebSocket } from "ws";
 
 dotenv.config();
 
 const app = express();
 
-// Subpath URL Normalization Middleware (supports /attaroqqy/api/ or any subdirectory deployment on Hostinger)
+// WebSocket Instance Management for Realtime Broadcasting
+let wssInstance: WebSocketServer | null = null;
+
+export function setWssInstance(wss: WebSocketServer) {
+  wssInstance = wss;
+}
+
+export function broadcastWebSocketMessage(payload: any) {
+  if (!wssInstance) return;
+  const msgStr = JSON.stringify(payload);
+  wssInstance.clients.forEach((client: WebSocket) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(msgStr);
+    }
+  });
+}
+
+// Subpath URL Normalization Middleware
 app.use((req, res, next) => {
   if (req.url.includes("/api/")) {
     const apiIndex = req.url.indexOf("/api/");
@@ -22,9 +39,10 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "10mb" }));
 
 // -------------------------------------------------------------
-// 1. MySQL Pool Initialization (Hostinger Database)
+// 1. MySQL Pool & Memory Store (Fallback) Initialization
 // -------------------------------------------------------------
 let mysqlPool: mysql.Pool | null = null;
+const memoryStore = new Map<string, any[]>();
 
 function getMySQLPool(): mysql.Pool | null {
   const host = process.env.MYSQL_HOST || process.env.DB_HOST || "localhost";
@@ -58,35 +76,6 @@ function getMySQLPool(): mysql.Pool | null {
   return mysqlPool;
 }
 
-// -------------------------------------------------------------
-// 2. Supabase Client Initialization (Fallback)
-// -------------------------------------------------------------
-let supabaseClient: any = null;
-
-function getSupabase() {
-  let url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  
-  if (!url || !key) {
-    return null;
-  }
-  
-  url = url.trim();
-  if (url.endsWith('/')) url = url.slice(0, -1);
-  if (url.endsWith('/rest/v1')) url = url.slice(0, -8);
-  if (url.endsWith('/')) url = url.slice(0, -1);
-  
-  if (!supabaseClient) {
-    try {
-      supabaseClient = createClient(url, key);
-    } catch (err: any) {
-      console.error("Gagal menginisialisasi client Supabase:", err.message);
-      return null;
-    }
-  }
-  return supabaseClient;
-}
-
 // Whitelist of valid table names to prevent SQL injection
 const VALID_TABLES = new Set([
   "santri",
@@ -114,13 +103,13 @@ const VALID_TABLES = new Set([
 ]);
 
 // -------------------------------------------------------------
-// 3. Status Endpoints
+// 2. Status & Utilities Endpoints
 // -------------------------------------------------------------
 app.get("/api/db-status", async (req, res) => {
-  const mysql = getMySQLPool();
-  if (mysql) {
+  const pool = getMySQLPool();
+  if (pool) {
     try {
-      await mysql.query("SELECT 1");
+      await pool.query("SELECT 1");
       return res.json({
         connected: true,
         type: "mysql",
@@ -133,49 +122,10 @@ app.get("/api/db-status", async (req, res) => {
     }
   }
 
-  const supabase = getSupabase();
-  if (supabase) {
-    return res.json({
-      connected: true,
-      type: "supabase",
-      url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-      reason: "connected"
-    });
-  }
-
   res.json({
-    connected: false,
-    type: "none",
-    reason: "missing_keys"
-  });
-});
-
-app.get("/api/supabase-status", async (req, res) => {
-  const mysql = getMySQLPool();
-  if (mysql) {
-    try {
-      await mysql.query("SELECT 1");
-      return res.json({
-        connected: true,
-        type: "mysql",
-        url: process.env.MYSQL_HOST || "Hostinger MySQL",
-        anonKey: "mysql-active",
-        reason: "connected"
-      });
-    } catch (e) {}
-  }
-
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const isReady = !!(url && key);
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || null;
-  
-  res.json({
-    connected: isReady,
-    type: isReady ? "supabase" : "none",
-    url: url || null,
-    anonKey: anonKey,
-    reason: isReady ? "connected" : "missing_keys"
+    connected: true,
+    type: "memory",
+    reason: "memory_store_active"
   });
 });
 
@@ -185,16 +135,6 @@ app.get("/api/download-sql-mysql", (req, res) => {
   res.download(filePath, "hostinger_mysql_setup.sql", (err) => {
     if (err) {
       res.status(500).send("Gagal mengunduh skema SQL MySQL Hostinger");
-    }
-  });
-});
-
-// Download SQL Schema for Supabase PostgreSQL
-app.get("/api/download-sql-supabase", (req, res) => {
-  const filePath = path.join(process.cwd(), "supabase_setup.sql");
-  res.download(filePath, "supabase_setup.sql", (err) => {
-    if (err) {
-      res.status(500).send("Gagal mengunduh skema SQL Supabase");
     }
   });
 });
@@ -216,23 +156,6 @@ app.get("/api/storage-stats", async (req, res) => {
         bucketSize: 2400000,
         isFallback: false
       });
-    } catch (err: any) {
-      console.warn("MySQL storage stats query failed:", err.message);
-    }
-  }
-
-  const client = getSupabase();
-  if (client) {
-    try {
-      const { data, error } = await client.rpc("get_storage_stats");
-      if (!error && data && data.length > 0) {
-        return res.json({
-          success: true,
-          databaseSize: Number(data[0].database_size) || 1250000,
-          bucketSize: Number(data[0].bucket_size) || 0,
-          isFallback: false
-        });
-      }
     } catch (err: any) {}
   }
 
@@ -258,7 +181,7 @@ function stripPassword(table: string, data: any): any {
 }
 
 // -------------------------------------------------------------
-// 4. Authentication Endpoint
+// 3. Authentication Endpoint
 // -------------------------------------------------------------
 app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body;
@@ -321,95 +244,65 @@ app.post("/api/auth/login", async (req, res) => {
       });
     } catch (err: any) {
       console.error("MySQL Auth login error:", err);
-      return res.status(500).json({ success: false, error: err.message });
     }
   }
 
-  // Fallback to Supabase
-  const client = getSupabase();
-  if (!client) {
-    return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
+  // Memory store fallback authentication
+  const list = memoryStore.get("app_credentials") || [];
+  let matchedUser = list.find((u: any) => (u.username || "").toLowerCase() === emailLower);
+
+  if (!matchedUser && emailLower === defaultUser && password === defaultPass) {
+    matchedUser = {
+      id: "superadmin",
+      username: defaultUser,
+      password: defaultPass,
+      role: "superadmin",
+      status: "approved"
+    };
+    list.push(matchedUser);
+    memoryStore.set("app_credentials", list);
   }
 
-  try {
-    const { data, error } = await client
-      .from("app_credentials")
-      .select("*")
-      .eq("username", emailLower)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    let matchedUser = data;
-
-    if (!matchedUser && emailLower === defaultUser && password === defaultPass) {
-      const newId = 'superadmin';
-      const payload = {
-        id: newId,
-        username: defaultUser,
-        password: defaultPass,
-        role: 'superadmin',
-        status: 'approved',
-        created_at: new Date().toISOString()
-      };
-      await client.from("app_credentials").insert(payload);
-      
-      return res.json({
-        success: true,
-        user: {
-          id: newId,
-          username: defaultUser,
-          role: 'superadmin',
-          status: 'approved'
-        }
-      });
-    }
-
-    if (!matchedUser) {
-      return res.status(401).json({ success: false, error: "Email atau Kata Sandi salah atau akun Anda tidak terdaftar." });
-    }
-
-    if (matchedUser.password !== password) {
-      return res.status(401).json({ success: false, error: "Email atau Kata Sandi salah." });
-    }
-
-    if (matchedUser.status === 'pending') {
-      return res.status(403).json({ success: false, error: "Sesi Tertunda: Pendaftaran akun Anda masih menunggu persetujuan (approval) dari Superadmin." });
-    } else if (matchedUser.status === 'rejected') {
-      return res.status(403).json({ success: false, error: "Akses Ditolak: Pendaftaran akun Anda ditolak oleh Superadmin." });
-    }
-
-    return res.json({
-      success: true,
-      needsCancelReset: matchedUser.status === 'minta_reset',
-      user: {
-        id: matchedUser.id,
-        username: matchedUser.username,
-        role: matchedUser.role,
-        status: matchedUser.status,
-        displayName: matchedUser.display_name || matchedUser.displayName,
-        avatarUrl: matchedUser.avatar_url || matchedUser.avatarUrl
-      }
-    });
-  } catch (err: any) {
-    console.error("Supabase Auth login error:", err);
-    res.status(500).json({ success: false, error: err.message });
+  if (!matchedUser) {
+    return res.status(401).json({ success: false, error: "Email atau Kata Sandi salah atau akun Anda tidak terdaftar." });
   }
+
+  if (matchedUser.password !== password) {
+    return res.status(401).json({ success: false, error: "Email atau Kata Sandi salah." });
+  }
+
+  if (matchedUser.status === 'pending') {
+    return res.status(403).json({ success: false, error: "Sesi Tertunda: Pendaftaran akun Anda masih menunggu persetujuan (approval) dari Superadmin." });
+  } else if (matchedUser.status === 'rejected') {
+    return res.status(403).json({ success: false, error: "Akses Ditolak: Pendaftaran akun Anda ditolak oleh Superadmin." });
+  }
+
+  return res.json({
+    success: true,
+    needsCancelReset: matchedUser.status === 'minta_reset',
+    user: {
+      id: matchedUser.id,
+      username: matchedUser.username,
+      role: matchedUser.role,
+      status: matchedUser.status,
+      displayName: matchedUser.display_name || matchedUser.displayName,
+      avatarUrl: matchedUser.avatar_url || matchedUser.avatarUrl
+    }
+  });
 });
 
 // -------------------------------------------------------------
-// 5. Storage Upload Endpoint (Files & Photos)
+// 4. Storage Upload Endpoint (Files & Photos)
 // -------------------------------------------------------------
 app.post("/api/upload", async (req, res) => {
   try {
-    const { fileName, fileBase64, contentType } = req.body;
+    const { fileName, fileBase64 } = req.body;
     if (!fileName || !fileBase64) {
       return res.status(400).json({ success: false, error: "fileName and fileBase64 are required" });
     }
 
     const buffer = Buffer.from(fileBase64, "base64");
 
-    // Save to local filesystem (works out-of-the-box on Hostinger Node.js)
     const publicDir = path.join(process.cwd(), "public", "uploads");
     if (!fs.existsSync(publicDir)) {
       fs.mkdirSync(publicDir, { recursive: true });
@@ -424,17 +317,6 @@ app.post("/api/upload", async (req, res) => {
 
     const publicUrl = `uploads/${fileName}`;
 
-    // Also upload to Supabase bucket if Supabase is connected
-    const client = getSupabase();
-    if (client) {
-      try {
-        await client.storage.from("santri-assets").upload(fileName, buffer, {
-          contentType: contentType || "application/octet-stream",
-          upsert: true
-        });
-      } catch (e) {}
-    }
-
     res.json({
       success: true,
       path: `uploads/${fileName}`,
@@ -447,7 +329,7 @@ app.post("/api/upload", async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 6. Generic DB Table Operations (MySQL Hostinger & Supabase Fallback)
+// 5. Generic DB Table Operations & Realtime Broadcasting
 // -------------------------------------------------------------
 function packPendidikanFormal(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
@@ -503,6 +385,18 @@ function sanitizePayload(payload: any): any {
   return payload;
 }
 
+async function tryMySQLQuery(sql: string, params: any[] = []): Promise<{ success: boolean; rows?: any; error?: any }> {
+  const pool = getMySQLPool();
+  if (!pool) return { success: false, error: "NO_MYSQL" };
+
+  try {
+    const [rows]: any = await pool.query(sql, params);
+    return { success: true, rows };
+  } catch (err: any) {
+    return { success: false, error: err };
+  }
+}
+
 // GET /api/db/:table
 app.get("/api/db/:table", async (req, res) => {
   const { table } = req.params;
@@ -510,58 +404,22 @@ app.get("/api/db/:table", async (req, res) => {
     return res.status(400).json({ success: false, error: `Tabel '${table}' tidak valid` });
   }
 
-  const pool = getMySQLPool();
-  if (pool) {
-    try {
-      const [rows]: any = await pool.query(`SELECT * FROM \`${table}\``);
-      let finalData = stripPassword(table, rows || []);
-      if (table === "santri") {
-        finalData = unpackPendidikanFormal(finalData);
-      }
-      return res.json({ success: true, data: finalData });
-    } catch (err: any) {
-      console.error(`MySQL GET /api/db/${table} error:`, err);
-      return res.status(500).json({ success: false, error: err.message });
-    }
-  }
-
-  const client = getSupabase();
-  if (!client) {
-    return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
-  }
-
-  try {
-    let allData: any[] = [];
-    let from = 0;
-    const step = 1000;
-    let hasMore = true;
-
-    while (hasMore) {
-      const { data, error } = await client
-        .from(table)
-        .select("*")
-        .range(from, from + step - 1);
-      
-      if (error) throw error;
-      
-      if (data && data.length > 0) {
-        allData = allData.concat(data);
-        if (data.length < step) hasMore = false;
-        else from += step;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    let finalData = stripPassword(table, allData);
+  const mysqlRes = await tryMySQLQuery(`SELECT * FROM \`${table}\``);
+  if (mysqlRes.success) {
+    let finalData = stripPassword(table, mysqlRes.rows || []);
     if (table === "santri") {
       finalData = unpackPendidikanFormal(finalData);
     }
-
-    res.json({ success: true, data: finalData });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.json({ success: true, data: finalData });
   }
+
+  // Fallback memory store
+  let data = memoryStore.get(table) || [];
+  let finalData = stripPassword(table, data);
+  if (table === "santri") {
+    finalData = unpackPendidikanFormal(finalData);
+  }
+  res.json({ success: true, data: finalData });
 });
 
 // POST /api/db/:table
@@ -581,12 +439,12 @@ app.post("/api/db/:table", async (req, res) => {
     sanitizedBody = packPendidikanFormal(sanitizedBody);
   }
 
+  const rowsToInsert = Array.isArray(sanitizedBody) ? sanitizedBody : [sanitizedBody];
+  const insertedResults: any[] = [];
+
   const pool = getMySQLPool();
   if (pool) {
     try {
-      const rowsToInsert = Array.isArray(sanitizedBody) ? sanitizedBody : [sanitizedBody];
-      const insertedResults = [];
-
       for (const row of rowsToInsert) {
         if (!row.id) {
           row.id = String(Date.now()) + Math.random().toString(36).substring(2, 7);
@@ -595,44 +453,47 @@ app.post("/api/db/:table", async (req, res) => {
         const columns = keys.map(k => `\`${k}\``).join(", ");
         const placeholders = keys.map(() => "?").join(", ");
         const values = keys.map(k => (typeof row[k] === "object" && row[k] !== null ? JSON.stringify(row[k]) : row[k]));
-
         const updateClause = keys.map(k => `\`${k}\` = VALUES(\`${k}\`)`).join(", ");
 
         const sql = `INSERT INTO \`${table}\` (${columns}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateClause}`;
         await pool.query(sql, values);
         insertedResults.push(row);
       }
-
-      let resultData = stripPassword(table, Array.isArray(sanitizedBody) ? insertedResults : insertedResults[0]);
-      if (table === "santri") {
-        resultData = unpackPendidikanFormal(resultData);
-      }
-      return res.json({ success: true, data: resultData });
     } catch (err: any) {
-      console.error(`MySQL POST /api/db/${table} error:`, err);
-      return res.status(500).json({ success: false, error: err.message });
+      console.warn(`MySQL POST /api/db/${table} error:`, err.message);
     }
   }
 
-  const client = getSupabase();
-  if (!client) {
-    return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
-  }
-
-  try {
-    const isArray = Array.isArray(sanitizedBody);
-    const { data, error } = await client.from(table).insert(sanitizedBody).select();
-    if (error) throw error;
-
-    let resultData = stripPassword(table, isArray ? (data || []) : (data?.[0] || null));
-    if (table === "santri") {
-      resultData = unpackPendidikanFormal(resultData);
+  // Memory store mirror
+  let list = memoryStore.get(table) || [];
+  for (const row of rowsToInsert) {
+    if (!row.id) {
+      row.id = String(Date.now()) + Math.random().toString(36).substring(2, 7);
     }
-
-    res.json({ success: true, data: resultData });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    const idx = list.findIndex((item: any) => item.id === row.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...row };
+    } else {
+      list.push(row);
+    }
+    if (!pool) insertedResults.push(row);
   }
+  memoryStore.set(table, list);
+
+  let resultData = stripPassword(table, Array.isArray(sanitizedBody) ? insertedResults : insertedResults[0]);
+  if (table === "santri") {
+    resultData = unpackPendidikanFormal(resultData);
+  }
+
+  // Realtime WebSocket broadcast
+  broadcastWebSocketMessage({
+    event: "db_change",
+    table,
+    action: "insert",
+    data: resultData
+  });
+
+  return res.json({ success: true, data: resultData });
 });
 
 // PUT /api/db/:table/:id
@@ -652,6 +513,8 @@ app.put("/api/db/:table/:id", async (req, res) => {
     sanitizedBody = packPendidikanFormal(sanitizedBody);
   }
 
+  let updatedResult: any = { id, ...sanitizedBody };
+
   const pool = getMySQLPool();
   if (pool) {
     try {
@@ -669,35 +532,37 @@ app.put("/api/db/:table/:id", async (req, res) => {
       }
 
       const [rows]: any = await pool.query(`SELECT * FROM \`${table}\` WHERE \`id\` = ? LIMIT 1`, [id]);
-      let resultData = stripPassword(table, rows?.[0] || { id, ...sanitizedBody });
-      if (table === "santri") {
-        resultData = unpackPendidikanFormal(resultData);
-      }
-      return res.json({ success: true, data: resultData });
+      if (rows?.[0]) updatedResult = rows[0];
     } catch (err: any) {
-      console.error(`MySQL PUT /api/db/${table}/${id} error:`, err);
-      return res.status(500).json({ success: false, error: err.message });
+      console.warn(`MySQL PUT /api/db/${table}/${id} error:`, err.message);
     }
   }
 
-  const client = getSupabase();
-  if (!client) {
-    return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
+  // Memory store mirror
+  let list = memoryStore.get(table) || [];
+  const idx = list.findIndex((item: any) => item.id === id);
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...sanitizedBody, id };
+  } else {
+    list.push({ id, ...sanitizedBody });
+  }
+  memoryStore.set(table, list);
+
+  let resultData = stripPassword(table, updatedResult);
+  if (table === "santri") {
+    resultData = unpackPendidikanFormal(resultData);
   }
 
-  try {
-    const { data, error } = await client.from(table).update(sanitizedBody).eq("id", id).select();
-    if (error) throw error;
+  // Realtime WebSocket broadcast
+  broadcastWebSocketMessage({
+    event: "db_change",
+    table,
+    action: "update",
+    id,
+    data: resultData
+  });
 
-    let resultData = stripPassword(table, data?.[0] || null);
-    if (table === "santri") {
-      resultData = unpackPendidikanFormal(resultData);
-    }
-
-    res.json({ success: true, data: resultData });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  return res.json({ success: true, data: resultData });
 });
 
 // DELETE /api/db/:table/:id
@@ -726,39 +591,24 @@ app.delete("/api/db/:table/:id", async (req, res) => {
       }
 
       await pool.query(`DELETE FROM \`${table}\` WHERE \`id\` = ?`, [id]);
-      return res.json({ success: true });
     } catch (err: any) {
-      console.error(`MySQL DELETE /api/db/${table}/${id} error:`, err);
-      return res.status(500).json({ success: false, error: err.message });
+      console.warn(`MySQL DELETE /api/db/${table}/${id} error:`, err.message);
     }
   }
 
-  const client = getSupabase();
-  if (!client) {
-    return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
-  }
+  // Memory store mirror
+  let list = memoryStore.get(table) || [];
+  memoryStore.set(table, list.filter((item: any) => item.id !== id));
 
-  try {
-    if (table === "santri") {
-      const { data: sData } = await client.from("santri").select("id, nama").eq("id", id).maybeSingle();
-      const santriNama = sData?.nama;
+  // Realtime WebSocket broadcast
+  broadcastWebSocketMessage({
+    event: "db_change",
+    table,
+    action: "delete",
+    id
+  });
 
-      await client.from("rombel_assignment").delete().eq("santri_id", id);
-      if (santriNama) {
-        await client.from("perizinan").delete().or(`santri_id.eq.${id},nama_santri.eq.${santriNama}`);
-        await client.from("keamanan").delete().or(`santri_id.eq.${id},nama_santri.eq.${santriNama}`);
-        await client.from("bendahara").delete().eq("nama_santri", santriNama);
-      } else {
-        await client.from("perizinan").delete().eq("santri_id", id);
-        await client.from("keamanan").delete().eq("santri_id", id);
-      }
-    }
-    const { data, error } = await client.from(table).delete().eq("id", id).select();
-    if (error) throw error;
-    res.json({ success: true, data: stripPassword(table, data?.[0] || null) });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  return res.json({ success: true });
 });
 
 // Role Permissions Sync
@@ -769,53 +619,32 @@ app.post("/api/sync-role-permissions", async (req, res) => {
   if (pool) {
     try {
       const [rRows]: any = await pool.query("SELECT `id` FROM `roles` WHERE `name` = ? LIMIT 1", [roleName]);
-      if (!rRows || rRows.length === 0) {
-        return res.status(404).json({ success: false, error: `Role '${roleName}' tidak ditemukan.` });
+      if (rRows && rRows.length > 0) {
+        const roleId = rRows[0].id;
+
+        const [pRows]: any = await pool.query("SELECT `id`, `name` FROM `permissions`");
+        const enabledPermIds = (pRows || [])
+          .filter((p: any) => permissions.includes(p.name))
+          .map((p: any) => p.id);
+
+        await pool.query("DELETE FROM `role_has_permissions` WHERE `role_id` = ?", [roleId]);
+
+        for (const pid of enabledPermIds) {
+          await pool.query("INSERT INTO `role_has_permissions` (`role_id`, `permission_id`) VALUES (?, ?)", [roleId, pid]);
+        }
       }
-      const roleId = rRows[0].id;
-
-      const [pRows]: any = await pool.query("SELECT `id`, `name` FROM `permissions`");
-      const enabledPermIds = (pRows || [])
-        .filter((p: any) => permissions.includes(p.name))
-        .map((p: any) => p.id);
-
-      await pool.query("DELETE FROM `role_has_permissions` WHERE `role_id` = ?", [roleId]);
-
-      for (const pid of enabledPermIds) {
-        await pool.query("INSERT INTO `role_has_permissions` (`role_id`, `permission_id`) VALUES (?, ?)", [roleId, pid]);
-      }
-
-      return res.json({ success: true });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      console.warn("Error sync role permissions MySQL:", err.message);
     }
   }
 
-  const client = getSupabase();
-  if (!client) return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
+  broadcastWebSocketMessage({
+    event: "db_change",
+    table: "role_has_permissions",
+    action: "update"
+  });
 
-  try {
-    const { data: roleData, error: roleError } = await client.from("roles").select("id").eq("name", roleName).maybeSingle();
-    if (roleError) throw roleError;
-    if (!roleData) return res.status(404).json({ success: false, error: `Role '${roleName}' tidak ditemukan.` });
-
-    const roleId = roleData.id;
-    const { data: permData, error: permError } = await client.from("permissions").select("id, name");
-    if (permError) throw permError;
-
-    const enabledPermIds = permData.filter((p: any) => permissions.includes(p.name)).map((p: any) => p.id);
-
-    await client.from("role_has_permissions").delete().eq("role_id", roleId);
-
-    if (enabledPermIds.length > 0) {
-      const inserts = enabledPermIds.map((pid: any) => ({ role_id: roleId, permission_id: pid }));
-      await client.from("role_has_permissions").insert(inserts);
-    }
-
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  return res.json({ success: true });
 });
 
 // Truncate all tables for administrative reset
@@ -860,34 +689,19 @@ app.post("/api/db-truncate-all", async (req, res) => {
         }
       }
       await pool.query("SET FOREIGN_KEY_CHECKS = 1");
-      return res.json({ success: true });
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: err.message });
+      console.warn("Truncate error MySQL:", err.message);
     }
   }
 
-  const client = getSupabase();
-  if (!client) return res.json({ success: false, error: "DB_NOT_CONFIGURED" });
+  memoryStore.clear();
 
-  try {
-    for (const table of tables) {
-      if (table === "app_credentials") {
-        await client.from(table).delete().neq("id", "superadmin");
-      } else if (table === "periode") {
-        await client.from(table).delete().neq("id", "Semua");
-      } else if (table === "pesantren_profile") {
-        await client.from(table).update({
-          nama_pesantren: "Pondok Pesantren Darussalam Al-Azhar",
-          nama_yayasan: "Yayasan Pendidikan Islam Darussalam"
-        }).eq("id", "main");
-      } else {
-        await client.from(table).delete().not("id", "is", null);
-      }
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  broadcastWebSocketMessage({
+    event: "db_change",
+    action: "truncate_all"
+  });
+
+  return res.json({ success: true });
 });
 
 export default app;

@@ -14,7 +14,7 @@ import { DEFAULT_ROLES } from '../lib/permissions';
 import LembagaKelasSub from './pendidikan/LembagaKelasSub';
 import RombelSub from './pendidikan/RombelSub';
 import DataAkademikSub from './pendidikan/DataAkademikSub';
-import { fetchTableData, insertTableRow, updateTableRow, deleteTableRow, safeLocalStorageSetItem, getSupabaseClient, snakeToCamel } from '../lib/api';
+import { fetchTableData, insertTableRow, updateTableRow, deleteTableRow, safeLocalStorageSetItem, subscribeRealtimeChanges, snakeToCamel } from '../lib/api';
 
 // Initial Mock Data matching SQL seeds
 const INITIAL_LEMBAGA: Lembaga[] = [];
@@ -412,156 +412,30 @@ export default function PendidikanView({
 
     loadEducationData();
 
-    // Set up Realtime Websocket Sync
-    let supabaseClient: any = null;
-    let activeChannel: any = null;
-
-    const setupRealtime = async () => {
-      try {
-        const supabase = await getSupabaseClient();
-        if (!supabase) {
-          console.warn("Supabase client is not initialized. Realtime sync is disabled.");
-          return;
+    // Subscribe to WebSocket realtime changes from server
+    const unsubscribeWs = subscribeRealtimeChanges((payload: any) => {
+      if (payload.event === 'db_change') {
+        const eduTables = ['lembaga', 'kelas', 'kategori_rombel', 'kelompok_rombel', 'rombel_assignment'];
+        if (!payload.table || eduTables.includes(payload.table) || payload.action === 'truncate_all') {
+          loadEducationData();
         }
-        supabaseClient = supabase;
-        if (!isMounted) return;
+      }
+    });
 
-        const uniqueChannelName = `pendidikan-db-changes-${Math.random().toString(36).substring(2, 9)}`;
-        activeChannel = supabase.channel(uniqueChannelName)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'lembaga' }, (payload: any) => {
-            console.log('Realtime lembaga:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              if (newRow.deskripsi) {
-                const match = newRow.deskripsi.match(/\[TA_META:(.*?)\]/);
-                if (match) {
-                  try {
-                    const meta = JSON.parse(match[1]);
-                    newRow.taMulaiTanggal = meta.taMulaiTanggal;
-                    newRow.taMulaiBulan = meta.taMulaiBulan;
-                    newRow.taSelesaiTanggal = meta.taSelesaiTanggal;
-                    newRow.taSelesaiBulan = meta.taSelesaiBulan;
-                    newRow.deskripsi = newRow.deskripsi.replace(/\[TA_META:.*?\]/g, "").trim();
-                  } catch (e) {}
-                }
-              }
-              setLembagasList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              if (updatedRow.deskripsi) {
-                const match = updatedRow.deskripsi.match(/\[TA_META:(.*?)\]/);
-                if (match) {
-                  try {
-                    const meta = JSON.parse(match[1]);
-                    updatedRow.taMulaiTanggal = meta.taMulaiTanggal;
-                    updatedRow.taMulaiBulan = meta.taMulaiBulan;
-                    updatedRow.taSelesaiTanggal = meta.taSelesaiTanggal;
-                    updatedRow.taSelesaiBulan = meta.taSelesaiBulan;
-                    updatedRow.deskripsi = updatedRow.deskripsi.replace(/\[TA_META:.*?\]/g, "").trim();
-                  } catch (e) {}
-                }
-              }
-              setLembagasList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setLembagasList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'kelas' }, (payload: any) => {
-            console.log('Realtime kelas:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = deserializeKelas(snakeToCamel(payload.new));
-              setKelasList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = deserializeKelas(snakeToCamel(payload.new));
-              setKelasList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setKelasList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'kategori_rombel' }, (payload: any) => {
-            console.log('Realtime kategori_rombel:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setCategoriesList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setCategoriesList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setCategoriesList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'kelompok_rombel' }, (payload: any) => {
-            console.log('Realtime kelompok_rombel:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setGroupsList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setGroupsList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setGroupsList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'rombel_assignment' }, (payload: any) => {
-            console.log('Realtime rombel_assignment:', payload);
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newRow = snakeToCamel(payload.new);
-              setAssignmentsList(prev => {
-                if (prev.some(item => item.id === newRow.id)) {
-                  return prev.map(item => item.id === newRow.id ? newRow : item);
-                }
-                return [...prev, newRow];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedRow = snakeToCamel(payload.new);
-              setAssignmentsList(prev => prev.map(item => item.id === updatedRow.id ? updatedRow : item));
-            } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              setAssignmentsList(prev => prev.filter(item => item.id !== oldId));
-            }
-          })
-          .subscribe();
-      } catch (err) {
-        console.error("Gagal memulai koneksi realtime di PendidikanView:", err);
+    // Re-fetch immediately when screen/tab regains focus or visibility
+    const handleFocusOrVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadEducationData();
       }
     };
-
-    setupRealtime();
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
 
     return () => {
       isMounted = false;
-      if (supabaseClient && activeChannel) {
-        supabaseClient.removeChannel(activeChannel);
-      }
+      unsubscribeWs();
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
     };
   }, []);
 
