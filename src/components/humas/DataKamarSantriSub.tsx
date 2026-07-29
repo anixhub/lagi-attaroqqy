@@ -232,49 +232,6 @@ export default function DataKamarSantriSub({
     }
   }, [toast]);
 
-  // Recalculate horizontal scroll buttons and scroll stickiness on layout changes
-  useEffect(() => {
-    updateScrollButtons();
-    const timer = setTimeout(() => {
-      updateScrollButtons();
-      handleTableScroll();
-    }, 100);
-
-    const handleResize = () => {
-      updateScrollButtons();
-      handleTableScroll();
-    };
-
-    const handleGlobalScroll = () => {
-      handleTableScroll();
-    };
-
-    window.addEventListener('resize', handleResize, { passive: true });
-    document.addEventListener('scroll', handleGlobalScroll, { capture: true, passive: true });
-
-    let observer: ResizeObserver | null = null;
-    const container = containerRef.current;
-    if (container) {
-      observer = new ResizeObserver(() => {
-        updateScrollButtons();
-      });
-      observer.observe(container);
-      const table = container.querySelector('table');
-      if (table) {
-        observer.observe(table);
-      }
-    }
-
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', handleResize);
-      document.removeEventListener('scroll', handleGlobalScroll, { capture: true });
-      if (observer) {
-        observer.disconnect();
-      }
-    };
-  }, [searchQuery, genderFilter, kamarStatusFilter, kompleksFilter, kamarFilter, currentPage, pageSize, isSelectionMode]);
-
   // Format Room: complex name + room name
   const getKamarFormat = (s: Santri) => {
     if (!hasValidRoom(s.kamar)) {
@@ -399,6 +356,49 @@ export default function DataKamarSantriSub({
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
   const paginatedSantri = sortedSantri.slice(startIndex, endIndex);
+
+  // Recalculate horizontal scroll buttons and scroll stickiness on layout changes
+  useEffect(() => {
+    updateScrollButtons();
+    const timer = setTimeout(() => {
+      updateScrollButtons();
+      handleTableScroll();
+    }, 100);
+
+    const handleResize = () => {
+      updateScrollButtons();
+      handleTableScroll();
+    };
+
+    const handleGlobalScroll = () => {
+      handleTableScroll();
+    };
+
+    window.addEventListener('resize', handleResize, { passive: true });
+    document.addEventListener('scroll', handleGlobalScroll, { capture: true, passive: true });
+
+    let observer: ResizeObserver | null = null;
+    const container = containerRef.current;
+    if (container) {
+      observer = new ResizeObserver(() => {
+        updateScrollButtons();
+      });
+      observer.observe(container);
+      const table = container.querySelector('table');
+      if (table) {
+        observer.observe(table);
+      }
+    }
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('scroll', handleGlobalScroll, { capture: true });
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, [searchQuery, genderFilter, kamarStatusFilter, kompleksFilter, kamarFilter, currentPage, pageSize, isSelectionMode, santriList, paginatedSantri]);
 
   // Count unassigned students for the current gender Filter (excluding Alumni)
   const unassignedSantriCount = santriList.filter(s => 
@@ -1434,8 +1434,7 @@ export default function DataKamarSantriSub({
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto scrollbar-thin">
-              <table className="w-full border-collapse text-left text-sm text-slate-600 min-w-[1000px]">
+            <table className="w-full border-collapse text-left text-sm text-slate-600 min-w-[1000px]">
                 <thead className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider select-none">
                   {renderTableHeadContents('bg-slate-50 text-slate-400')}
                 </thead>
@@ -1704,7 +1703,6 @@ export default function DataKamarSantriSub({
                 })}
               </tbody>
             </table>
-          </div>
         )}
         </div>
       </div>

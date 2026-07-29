@@ -190,17 +190,6 @@ export default function DataAkademikSub({
     updateScrollButtons();
   };
 
-  useEffect(() => {
-    updateScrollButtons();
-    const timer = setTimeout(() => updateScrollButtons(), 100);
-    const handleResize = () => updateScrollButtons();
-    window.addEventListener('resize', handleResize);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [paginatedSantri]);
-
   // Active Lembagas list based on gender filter and selected mode (formal vs internal)
   const activeLembagas = lembagasList.filter(l => {
     const matchesGender = !l.gender || l.gender === (genderFilter as string) || (l.gender as string) === 'Campuran' || (l.gender as string) === 'Semua';
@@ -483,6 +472,17 @@ export default function DataAkademikSub({
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
   const paginatedSantri = sortedSantri.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    updateScrollButtons();
+    const timer = setTimeout(() => updateScrollButtons(), 100);
+    const handleResize = () => updateScrollButtons();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [paginatedSantri]);
 
   // Count unassigned students
   const unassignedCount = santriList.filter(s => {
